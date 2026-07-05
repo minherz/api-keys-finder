@@ -139,8 +139,8 @@ export async function fetchProjects(token: string, signal?: AbortSignal): Promis
  * If the API keys service is not enabled, returns an empty array and doesn't crash.
  */
 export async function fetchProjectApiKeys(
-  token: string, 
-  projectId: string, 
+  token: string,
+  projectId: string,
   signal?: AbortSignal,
   quotaProjectId?: string
 ): Promise<ApiKey[]> {
@@ -166,13 +166,13 @@ export async function fetchProjectApiKeys(
           if (errorJson.error.message) {
             apiMessage = errorJson.error.message;
           }
-          
+
           const errPayload = errorJson.error;
           if (
             errPayload.code === 403 &&
             errPayload.status === 'PERMISSION_DENIED' &&
             Array.isArray(errPayload.details) &&
-            errPayload.details.some((detail: any) => 
+            errPayload.details.some((detail: any) =>
               detail && typeof detail === 'object' && detail.reason === 'SERVICE_DISABLED'
             )
           ) {

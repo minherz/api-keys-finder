@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { AppState, ParsedApiKey } from './types';
+import { AppState, ParsedApiKey, ApiKey } from './types';
 import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys, revokeOAuthToken } from './api';
 import { parseUrlHash, getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate } from './utils';
 
@@ -543,7 +543,7 @@ async function executeSearchWorkflow() {
 
       try {
         // Fetch keys for this project
-        keys = await fetchProjectApiKeys(state.token, project.projectId, signal);
+        keys = await fetchProjectApiKeys(state.token!, project.projectId, signal);
         isSuccess = true;
       } catch (err: any) {
         if (err.name === 'AbortError') {
@@ -619,7 +619,7 @@ async function executeSearchWorkflow() {
 
             try {
               updateStatusBar(`Scanning project: ${currentProjectId} (concurrent)...`);
-              const keys = await fetchProjectApiKeys(state.token, currentProjectId, signal, goodProjectId);
+              const keys = await fetchProjectApiKeys(state.token!, currentProjectId, signal, goodProjectId);
 
               const parsedKeys: ParsedApiKey[] = keys.map(k => {
                 const restrictionLevel = getRestrictionLevel(k.restrictions);
@@ -751,6 +751,13 @@ function setupEventListeners() {
 function init() {
   setupEventListeners();
   handleOAuthCallback();
+
+  // Set the application version dynamically from package.json in the status bar
+  const copyrightElement = document.getElementById('copyright');
+  if (copyrightElement) {
+    const version = `v${import.meta.env.APP_VERSION}` || '<unknown>';
+    copyrightElement.innerHTML = `&copy; 2026 Google API Key Reviewer ${version}. All rights reserved.`;
+  }
 }
 
 if (document.readyState === 'loading') {
