@@ -97,9 +97,6 @@ export interface ParsedApiKey {
 }
 
 export interface AppState {
-  token: string | null;
-  clientId: string | null;
-  scope: 'readonly' | 'full' | null;
   user: GoogleUser | null;
   projects: GcpProject[];
   keys: ParsedApiKey[];
