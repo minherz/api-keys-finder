@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { GoogleUser, GcpProject, ProjectsListResponse, ApiKey, ApiKeysListResponse } from './types';
+import { getAuthToken } from './auth';
 
 export class AppError extends Error {
   public source: 'client' | 'server';
@@ -38,11 +39,16 @@ export class ServiceDisabledError extends AppError {
 /**
  * Fetches the user profile from Google UserInfo API.
  */
-export async function fetchUserProfile(token: string, signal?: AbortSignal): Promise<GoogleUser> {
+export async function fetchUserProfile(signal?: AbortSignal): Promise<GoogleUser> {
+  const activeToken = getAuthToken();
+  if (!activeToken) {
+    throw new AppError('Authentication token is missing. Please sign in.', 'client');
+  }
+
   try {
     const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: {
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${activeToken}`
       },
       signal
     });
@@ -72,7 +78,12 @@ export async function fetchUserProfile(token: string, signal?: AbortSignal): Pro
 /**
  * Fetches the list of all active GCP projects the user has access to (using CRM v1).
  */
-export async function fetchProjects(token: string, signal?: AbortSignal): Promise<GcpProject[]> {
+export async function fetchProjects(signal?: AbortSignal): Promise<GcpProject[]> {
+  const activeToken = getAuthToken();
+  if (!activeToken) {
+    throw new AppError('Authentication token is missing. Please sign in.', 'client');
+  }
+
   let projects: GcpProject[] = [];
   let nextPageToken: string | undefined = undefined;
 
@@ -85,7 +96,7 @@ export async function fetchProjects(token: string, signal?: AbortSignal): Promis
 
       const response = await fetch(url.toString(), {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${activeToken}`
         },
         signal
       });
@@ -139,16 +150,20 @@ export async function fetchProjects(token: string, signal?: AbortSignal): Promis
  * If the API keys service is not enabled, returns an empty array and doesn't crash.
  */
 export async function fetchProjectApiKeys(
-  token: string, 
-  projectId: string, 
+  projectId: string,
   signal?: AbortSignal,
   quotaProjectId?: string
 ): Promise<ApiKey[]> {
+  const activeToken = getAuthToken();
+  if (!activeToken) {
+    throw new AppError('Authentication token is missing. Please sign in.', 'client');
+  }
+
   try {
     const url = `https://apikeys.googleapis.com/v2/projects/${projectId}/locations/global/keys`;
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${activeToken}`,
         'Content-Type': 'application/json',
         'x-goog-user-project': quotaProjectId || projectId
       },
@@ -166,13 +181,13 @@ export async function fetchProjectApiKeys(
           if (errorJson.error.message) {
             apiMessage = errorJson.error.message;
           }
-          
+
           const errPayload = errorJson.error;
           if (
             errPayload.code === 403 &&
             errPayload.status === 'PERMISSION_DENIED' &&
             Array.isArray(errPayload.details) &&
-            errPayload.details.some((detail: any) => 
+            errPayload.details.some((detail: any) =>
               detail && typeof detail === 'object' && detail.reason === 'SERVICE_DISABLED'
             )
           ) {
@@ -207,22 +222,5 @@ export async function fetchProjectApiKeys(
       throw err;
     }
     throw new AppError(err.message || `Network error fetching API keys for project ${projectId}`, 'client');
-  }
-}
-
-/**
- * Revokes Google OAuth access token on Sign Out.
- */
-export async function revokeOAuthToken(token: string): Promise<void> {
-  try {
-    await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      mode: 'no-cors' // Google's revoke endpoint allows no-cors
-    });
-  } catch (err) {
-    console.error('Failed to revoke OAuth token on server:', err);
   }
 }

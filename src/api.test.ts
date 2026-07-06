@@ -15,6 +15,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchUserProfile, fetchProjects, fetchProjectApiKeys, AppError, ServiceDisabledError } from './api';
 
+// Mock only the getAuthToken export of auth.ts which is imported and consumed by api.ts
+vi.mock('./auth', () => ({
+  getAuthToken: () => 'dummy_token'
+}));
+
 describe('api.ts unit tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -30,7 +35,7 @@ describe('api.ts unit tests', () => {
       } as Response);
       vi.stubGlobal('fetch', mockFetch);
 
-      const user = await fetchUserProfile('dummy_token');
+      const user = await fetchUserProfile();
       expect(user).toEqual(mockUser);
       expect(mockFetch).toHaveBeenCalledWith('https://www.googleapis.com/oauth2/v3/userinfo', expect.any(Object));
     });
@@ -44,7 +49,7 @@ describe('api.ts unit tests', () => {
       } as Response);
       vi.stubGlobal('fetch', mockFetch);
 
-      await expect(fetchUserProfile('dummy_token')).rejects.toThrow(AppError);
+      await expect(fetchUserProfile()).rejects.toThrow(AppError);
     });
 
     it('should throw network error on client failure', async () => {
@@ -52,7 +57,7 @@ describe('api.ts unit tests', () => {
       vi.stubGlobal('fetch', mockFetch);
 
       try {
-        await fetchUserProfile('dummy_token');
+        await fetchUserProfile();
         expect.fail('Should have thrown an error');
       } catch (err: any) {
         expect(err).toBeInstanceOf(AppError);
@@ -89,7 +94,7 @@ describe('api.ts unit tests', () => {
         } as Response);
       vi.stubGlobal('fetch', mockFetch);
 
-      const projects = await fetchProjects('dummy_token');
+      const projects = await fetchProjects();
       expect(projects).toHaveLength(2);
       expect(projects[0].projectId).toBe('proj-1');
       expect(projects[1].projectId).toBe('proj-3');
@@ -114,7 +119,7 @@ describe('api.ts unit tests', () => {
       } as Response);
       vi.stubGlobal('fetch', mockFetch);
 
-      await expect(fetchProjectApiKeys('dummy_token', 'forbidden-proj')).rejects.toThrow(AppError);
+      await expect(fetchProjectApiKeys('forbidden-proj')).rejects.toThrow(AppError);
     });
 
     it('should throw ServiceDisabledError on 403 when reason is SERVICE_DISABLED', async () => {
@@ -140,7 +145,7 @@ describe('api.ts unit tests', () => {
       } as Response);
       vi.stubGlobal('fetch', mockFetch);
 
-      await expect(fetchProjectApiKeys('dummy_token', 'disabled-proj')).rejects.toThrow(ServiceDisabledError);
+      await expect(fetchProjectApiKeys('disabled-proj')).rejects.toThrow(ServiceDisabledError);
     });
 
     it('should use custom quotaProjectId for x-goog-user-project header when provided', async () => {
@@ -151,7 +156,7 @@ describe('api.ts unit tests', () => {
       } as Response);
       vi.stubGlobal('fetch', mockFetch);
 
-      await fetchProjectApiKeys('dummy_token', 'target-proj', undefined, 'quota-proj');
+      await fetchProjectApiKeys('target-proj', undefined, 'quota-proj');
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({

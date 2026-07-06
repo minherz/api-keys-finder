@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { AppState, ParsedApiKey } from './types';
-import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys, revokeOAuthToken } from './api';
-import { parseUrlHash, getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate } from './utils';
-
-// Hardcoded Google OAuth 2.0 Client ID (Configure your registered Client ID here)
-const GOOGLE_OAUTH_CLIENT_ID = '315151726413-pqojn55eu1vqup2rq4q3ebl7qo17670a.apps.googleusercontent.com';
+import { AppState, ParsedApiKey, ApiKey } from './types';
+import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys } from './api';
+import { getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate } from './utils';
+import { login, logout, getAuthToken, getAuthScope } from './auth';
 
 // SVGs for Copy and Checked/Copied indicators (with pointer-events disabled for clean event bubbling)
 const COPY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
@@ -25,9 +23,6 @@ const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14
 
 // Initial Application State
 const state: AppState = {
-  token: null,
-  clientId: null,
-  scope: null,
   user: null,
   projects: [],
   keys: [],
@@ -125,7 +120,7 @@ function setErrorsModalVisible(visible: boolean, summaryText: string = '') {
  * Renders the empty state container based on the current authentication state.
  */
 function renderEmptyState() {
-  if (state.token) {
+  if (getAuthToken()) {
     const userDisplay = state.user ? (state.user.name || state.user.email) : 'Authenticated User';
     emptyStateContainer.innerHTML = `
       <div class="empty-icon">🔍</div>
@@ -154,79 +149,29 @@ function renderEmptyState() {
 }
 
 /**
- * Triggers Google OAuth redirect with specified client ID and scope.
+ * Triggers Google OAuth sign-in popup using the modern Google Identity Services library.
  */
 function redirectToGoogleOAuth(scopeType: 'readonly' | 'full') {
-  sessionStorage.setItem('gcp_reviewer_scope', scopeType);
-
-  const redirectUri = window.location.origin + window.location.pathname;
-
-  // Construct OAuth scopes
-  const scopesList = [
-    'openid',
-    'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/userinfo.email'
-  ];
-
-  if (scopeType === 'readonly') {
-    scopesList.push('https://www.googleapis.com/auth/cloud-platform.read-only');
-  } else {
-    scopesList.push('https://www.googleapis.com/auth/cloud-platform');
-  }
-
-  const stateVal = Math.random().toString(36).substring(2);
-  sessionStorage.setItem('gcp_reviewer_oauth_state', stateVal);
-
-  const oauthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  oauthUrl.searchParams.set('client_id', GOOGLE_OAUTH_CLIENT_ID);
-  oauthUrl.searchParams.set('redirect_uri', redirectUri);
-  oauthUrl.searchParams.set('response_type', 'token');
-  oauthUrl.searchParams.set('scope', scopesList.join(' '));
-  oauthUrl.searchParams.set('state', stateVal);
-  // Ensure we get a fresh prompt to allow scope choices
-  oauthUrl.searchParams.set('prompt', 'consent');
-
-  updateStatusBar('Redirecting to Google Sign-In...');
-  window.location.href = oauthUrl.toString();
+  updateStatusBar('Opening Google Sign-In popup...');
+  login(
+    scopeType,
+    () => {
+      handleOAuthSession();
+    },
+    (errMessage) => {
+      updateStatusBar(errMessage, true, true);
+    }
+  );
 }
 
 /**
- * Checks for returned OAuth credentials on page load and initializes session.
+ * Applies the authenticated session to the application state and fetches the user profile.
  */
-async function handleOAuthCallback() {
-  const hashParams = parseUrlHash(window.location.hash);
-
-  // Clean up URL hash so the token doesn't linger in address bar history/screenshots
-  if (window.location.hash) {
-    window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
-  }
-
-  let token = sessionStorage.getItem('gcp_reviewer_token');
-  let scope = sessionStorage.getItem('gcp_reviewer_scope') as 'readonly' | 'full' | null;
-
-  // If redirect back from Google with a new token
-  if (hashParams.access_token) {
-    const savedState = sessionStorage.getItem('gcp_reviewer_oauth_state');
-
-    // Validate state to prevent CSRF attacks
-    if (hashParams.state && savedState && hashParams.state !== savedState) {
-      console.error('OAuth state mismatch!');
-      updateStatusBar('Error during sign-in: Authentication state mismatch.', true, true);
-      return;
-    }
-
-    token = hashParams.access_token;
-    sessionStorage.setItem('gcp_reviewer_token', token);
-
-    // Scope is retrieved from what we stored before redirect
-    scope = (sessionStorage.getItem('gcp_reviewer_scope') as 'readonly' | 'full') || 'readonly';
-  }
+async function handleOAuthSession() {
+  const token = getAuthToken();
+  const scope = getAuthScope();
 
   if (token && scope) {
-    state.token = token;
-    state.scope = scope;
-    state.clientId = GOOGLE_OAUTH_CLIENT_ID;
-
     // Update toolbar profile elements to loading state
     btnShowSignIn.classList.add('hidden');
     userProfileContainer.classList.remove('hidden');
@@ -245,7 +190,7 @@ async function handleOAuthCallback() {
 
     try {
       updateStatusBar('Fetching user profile...');
-      const userProfile = await fetchUserProfile(token);
+      const userProfile = await fetchUserProfile();
       state.user = userProfile;
 
       // Render profile
@@ -281,15 +226,9 @@ async function handleOAuthCallback() {
  * Resets application state variables to signed-out values (internal helper).
  */
 function handleSignOutState() {
-  state.token = null;
-  state.scope = null;
   state.user = null;
   state.projects = [];
   state.keys = [];
-
-  sessionStorage.removeItem('gcp_reviewer_token');
-  sessionStorage.removeItem('gcp_reviewer_scope');
-  sessionStorage.removeItem('gcp_reviewer_oauth_state');
 
   // Reset UI elements
   btnShowSignIn.classList.remove('hidden');
@@ -310,10 +249,8 @@ function handleSignOutState() {
  * Performs full Sign Out, revoking the token from Google if possible.
  */
 async function handleSignOut() {
-  if (state.token) {
-    updateStatusBar('Signing out and revoking session token...');
-    await revokeOAuthToken(state.token);
-  }
+  updateStatusBar('Signing out and revoking session token...');
+  await logout();
   handleSignOutState();
 }
 
@@ -462,7 +399,7 @@ function cancelSearch() {
  * Main Search Workflow: Scans all active projects and retrieves active API keys.
  */
 async function executeSearchWorkflow() {
-  if (!state.token) {
+  if (!getAuthToken()) {
     updateStatusBar('Error: You must be signed in to search API keys.', true, true);
     return;
   }
@@ -498,7 +435,7 @@ async function executeSearchWorkflow() {
 
   try {
     // STEP 1: Fetch Projects
-    const projects = await fetchProjects(state.token, signal);
+    const projects = await fetchProjects(signal);
     state.projects = projects;
 
     if (projects.length === 0) {
@@ -543,7 +480,7 @@ async function executeSearchWorkflow() {
 
       try {
         // Fetch keys for this project
-        keys = await fetchProjectApiKeys(state.token, project.projectId, signal);
+        keys = await fetchProjectApiKeys(project.projectId, signal);
         isSuccess = true;
       } catch (err: any) {
         if (err.name === 'AbortError') {
@@ -619,7 +556,7 @@ async function executeSearchWorkflow() {
 
             try {
               updateStatusBar(`Scanning project: ${currentProjectId} (concurrent)...`);
-              const keys = await fetchProjectApiKeys(state.token, currentProjectId, signal, goodProjectId);
+              const keys = await fetchProjectApiKeys(currentProjectId, signal, goodProjectId);
 
               const parsedKeys: ParsedApiKey[] = keys.map(k => {
                 const restrictionLevel = getRestrictionLevel(k.restrictions);
@@ -747,10 +684,17 @@ function setupEventListeners() {
   btnProgressCancel.addEventListener('click', cancelSearch);
 }
 
-// ROBUST DOM INITIALIZATION
 function init() {
   setupEventListeners();
-  handleOAuthCallback();
+
+  handleOAuthSession();
+
+  // Set the application version dynamically from package.json in the status bar
+  const copyrightElement = document.getElementById('copyright');
+  if (copyrightElement) {
+    const version = `v${import.meta.env.APP_VERSION}` || '<unknown>';
+    copyrightElement.innerHTML = `&copy; 2026 Google API Key Reviewer ${version}. All rights reserved.`;
+  }
 }
 
 if (document.readyState === 'loading') {
