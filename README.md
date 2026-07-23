@@ -1,5 +1,7 @@
 # GCP Security Toolbox
 
+[![CI](https://github.com/minherz/gcp-security-toolbox/actions/workflows/test.yml/badge.svg)](https://github.com/minherz/gcp-security-toolbox/actions/workflows/test.yml)
+
 A monorepo containing security tools and utilities for Google Cloud Platform (GCP). The applications in this repository are designed as lightweight, client-side web applications hosted on **Firebase Hosting**.
 
 ---
