@@ -73,6 +73,30 @@ graph TD
 
 ---
 
+## 🛠️ Local Development & Configuration
+
+To run or build the application locally, you **must explicitly define** the `VITE_GOOGLE_OAUTH_CLIENT_ID` environment variable containing a registered Google OAuth 2.0 Client ID.
+
+### 1. Using a `.env` File (Recommended)
+Create a `.env` file inside `web/api-keys/`:
+
+```env
+VITE_GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+### 2. Exporting in Shell
+```bash
+export VITE_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+
+# Run development server
+npm run dev
+
+# Or run build
+npm run build
+```
+
+---
+
 ## 📋 Expectations & Pre-requisites
 
 Before using this application, please ensure your environment and account meet the following operational expectations:

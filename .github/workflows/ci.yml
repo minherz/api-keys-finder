@@ -68,6 +68,8 @@ jobs:
 
       - name: Verify TypeScript and build SPA
         working-directory: web/${{ matrix.app }}
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_OAUTH_CLIENT_ID }}
         run: npm run build
 
       - name: Run unit tests
