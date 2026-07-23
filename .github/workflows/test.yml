@@ -5,21 +5,52 @@ on:
     branches:
       - main
     paths:
-      - 'web/api-keys/**'
+      - 'web/*/**'
   pull_request:
     branches:
       - main
     paths:
-      - 'web/api-keys/**'
+      - 'web/*/**'
 
 jobs:
+  detect-changes:
+    name: Detect changed Web apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.set-apps.outputs.apps }}
+    steps:
+    - name: Checkout changes (in-depth)
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # need for diff calculation on multi-commit PRs
+    - name: Find changed applications
+      id: set-apps
+      run: |
+        # Determine reference commit based on event type
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASE_REF="origin/${{ github.base_ref }}"
+        else
+          BASE_REF="HEAD~1"
+        fi
+
+        # Extract unique first-level folder names under web/
+        # Example: web/app1/src/index.ts -> app1
+        DIRS=$(git diff --name-only "$BASE_REF" HEAD | grep '^web/.*\/.\+' | cut -d'/' -f2 | tr ' ' '\n' | sort -u | grep -v '^$' || true)
+
+        # Format unique directories into a JSON array: ["app1", "app2"]
+        JSON_ARRAY=$(echo "$UNIQUE_DIRS" | jq -R . | jq -s -c .)
+
+        echo "Detected changed web app directories: $JSON_ARRAY"
+        echo "apps=$JSON_ARRAY" >> $GITHUB_OUTPUT
+
   build-and-test:
+    needs: detect-changes
     name: Build & Test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web/api-keys
-
+    strategy:
+      matrix:
+        app: ${{ fromJson(needs.detect-changes.outputs.apps) }}
+      fail-fast: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,13 +60,16 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: 'web/api-keys/package-lock.json'
+          cache-dependency-path: 'web/${{ matrix.app }}/package-lock.json'
 
       - name: Install dependencies
+        working-directory: web/${{ matrix.app }}
         run: npm ci
 
       - name: Verify TypeScript and build SPA
+        working-directory: web/${{ matrix.app }}
         run: npm run build
 
       - name: Run unit tests
+        working-directory: web/${{ matrix.app }}
         run: npm test
