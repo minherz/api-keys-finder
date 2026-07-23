@@ -73,3 +73,9 @@ jobs:
       - name: Run unit tests
         working-directory: web/${{ matrix.app }}
         run: npm test
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-build-${{ matrix.app }}
+          path: web/${{ matrix.app }}/dist # Adjust if your build folder is named 'build' or 'public'
+          retention-days: 1
