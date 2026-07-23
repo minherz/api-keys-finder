@@ -1,4 +1,4 @@
-# Google Cloud API Key Reviewer
+# Google Cloud API Keys Finder
 
 An ultra-lightweight, high-performance Single Page Application (SPA) designed to audit and inspect active API keys across all accessible Google Cloud projects. Running entirely inside the browser with **zero backend dependencies**, it communicates directly with Google Cloud REST APIs to perform real-time security scanning, categorization, and restriction checks.
 
@@ -7,7 +7,7 @@ An ultra-lightweight, high-performance Single Page Application (SPA) designed to
 ## 📂 Project Structure
 
 ```
-api-key-reviewer/
+web/api-keys/
 ├── .devcontainer/       # Dev container configuration for instant workspace setup
 ├── .gitignore          # Ignored files (including dependencies and local CLI skills)
 ├── index.html          # Main HTML5 entrypoint and layout structure for the SPA
