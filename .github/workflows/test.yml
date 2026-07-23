@@ -33,6 +33,9 @@ jobs:
           BASE_REF="HEAD~1"
         fi
 
+        echo "DEBUG START"
+        git diff --name-only "$BASE_REF" HEAD
+        echo "DEBUG END"
         # Extract unique first-level folder names under web/
         # Example: web/app1/src/index.ts -> app1
         DIRS=$(git diff --name-only "$BASE_REF" HEAD | grep '^web/.*\/.\+' | cut -d'/' -f2 | tr ' ' '\n' | sort -u | grep -v '^$' || true)
