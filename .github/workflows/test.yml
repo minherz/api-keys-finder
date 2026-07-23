@@ -4,14 +4,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'web/api-keys/**'
   pull_request:
     branches:
       - main
+    paths:
+      - 'web/api-keys/**'
 
 jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/api-keys
 
     steps:
       - name: Checkout repository
@@ -22,6 +29,7 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
+          cache-dependency-path: 'web/api-keys/package-lock.json'
 
       - name: Install dependencies
         run: npm ci
