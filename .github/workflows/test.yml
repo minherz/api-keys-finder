@@ -20,7 +20,7 @@ jobs:
       apps: ${{ steps.set-apps.outputs.apps }}
     steps:
     - name: Checkout changes (in-depth)
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0 # need for diff calculation on multi-commit PRs
     - name: Find changed applications
@@ -36,10 +36,6 @@ jobs:
         # Extract unique first-level folder names under web/
         # Example: web/app1/src/index.ts -> app1
         DIRS=$(git diff --name-only "$BASE_REF" HEAD | grep '^web/.*\/.\+' | cut -d'/' -f2 | tr ' ' '\n' | sort -u | grep -v '^$' || true)
-
-        echo "DEBUG START"
-        echo $DIRS
-        echo "DEBUG END"
 
         # Format unique directories into a JSON array: ["app1", "app2"]
         JSON_ARRAY=$(echo "$DIRS" | jq -R . | jq -s -c .)
@@ -57,10 +53,10 @@ jobs:
       fail-fast: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: 'npm'
