@@ -693,7 +693,7 @@ function init() {
   const copyrightElement = document.getElementById('copyright');
   if (copyrightElement) {
     const version = `v${import.meta.env.APP_VERSION}` || '<unknown>';
-    copyrightElement.innerHTML = `&copy; 2026 Google API Key Reviewer ${version}. All rights reserved.`;
+    copyrightElement.innerHTML = `&copy; 2026 Google API Keys Finder ${version}. All rights reserved.`;
   }
 }
 
