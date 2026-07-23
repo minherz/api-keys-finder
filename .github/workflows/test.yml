@@ -33,15 +33,16 @@ jobs:
           BASE_REF="HEAD~1"
         fi
 
-        echo "DEBUG START"
-        git diff --name-only "$BASE_REF" HEAD
-        echo "DEBUG END"
         # Extract unique first-level folder names under web/
         # Example: web/app1/src/index.ts -> app1
         DIRS=$(git diff --name-only "$BASE_REF" HEAD | grep '^web/.*\/.\+' | cut -d'/' -f2 | tr ' ' '\n' | sort -u | grep -v '^$' || true)
 
+        echo "DEBUG START"
+        echo $DIRS
+        echo "DEBUG END"
+
         # Format unique directories into a JSON array: ["app1", "app2"]
-        JSON_ARRAY=$(echo "$UNIQUE_DIRS" | jq -R . | jq -s -c .)
+        JSON_ARRAY=$(echo "$DIRS" | jq -R . | jq -s -c .)
 
         echo "Detected changed web app directories: $JSON_ARRAY"
         echo "apps=$JSON_ARRAY" >> $GITHUB_OUTPUT
