@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    base: '/api-keys/',
     define: {
       'import.meta.env.APP_VERSION': JSON.stringify(pkg.version),
     },
