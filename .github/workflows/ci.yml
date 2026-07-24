@@ -1,16 +1,14 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'web/*/**'
   pull_request:
+    types: [opened, synchronize, reopened]
     branches:
       - main
     paths:
       - 'web/*/**'
+    paths-ignore:
+      - '**/README.md'
 
 jobs:
   detect-changes:
@@ -75,9 +73,57 @@ jobs:
       - name: Run unit tests
         working-directory: web/${{ matrix.app }}
         run: npm test
+
+      - name: Prepare Artifact Upload
+        working-directory: 
+        run: mv web/${{ matrix.app }}/dist ${{ matrix.app }}
+
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v6
         with:
           name: app-build-${{ matrix.app }}
-          path: web/${{ matrix.app }}/dist # Adjust if your build folder is named 'build' or 'public'
+          path: ${{ matrix.app }}
           retention-days: 1
+
+  deploy-staging:
+    needs: [detect-changes, build-and-test]
+    name: Deploy to Firebase Staging
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: "write"
+      checks: "write"
+      contents: "read"
+      id-token: "write"
+    # Run only if we successfully detected changes and built them
+    if: ${{ needs.detect-changes.outputs.apps != '[]' && needs.detect-changes.outputs.apps != '' }}
+    steps:
+      - name: Checkout deploy folder
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            deploy
+
+      - name: Download all builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: app-build-*
+          merge-multiple: true
+
+      # Deploy to Firebase Staging ---
+      - name: Authenticate to Google Cloud
+        id: "auth"
+        uses: google-github-actions/auth@v3
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
+      - name: Stage to Firebase
+        uses: minherz/firebase-hosting-deploy@v2
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
+          expires: "7d"
+          entryPoint: ./deploy/firebase
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}

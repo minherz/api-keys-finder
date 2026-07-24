@@ -1,0 +1,31 @@
+{
+    "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/firebase-config.json",
+    "hosting": {
+        "public": "web",
+        "headers": [
+            {
+                "source": "**/*.@(jpg|jpeg|gif|png)",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "max-age=7200"
+                    }
+                ]
+            },
+            {
+                "source": "404.html",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "max-age=300"
+                    }
+                ]
+            }
+        ],
+        "rewrites": [
+          { "source": "/api-keys/**", "destination": "/api-keys/index.html" },
+          { "source": "/mindmap/**", "destination": "/mindmap/index.html" }
+        ],
+        "cleanUrls": true
+    }
+}

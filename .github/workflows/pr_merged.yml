@@ -6,32 +6,23 @@ on:
     branches:
       - main
     paths:
-      - "src/**"
-      - "index.html"
-      - "package.json"
-      - "package-lock.json"
-      - "vite.config.ts"
-      - "tsconfig.json"
+      - 'web/*/**'
+    paths-ignore:
+      - '**/README.md'
 
 jobs:
   version-bump-and-push:
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true
-    environment: production-release
+    permissions:
+      contents: "read"
+      id-token: "write"
 
     steps:
-      - name: Generate a GitHub App token
-        id: generate-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.BOT_APP_ID }}
-          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
-
-      - name: Checkout repository
+      - name: Checkout source code
         uses: actions/checkout@v6
         with:
-          ref: main
-          token: ${{ steps.generate-token.outputs.token }}
+          fetch-depth: 0
 
       - name: Configure Git User
         run: |
