@@ -63,6 +63,9 @@ jobs:
     name: Deploy to Cloud Run Tagged Revision
     needs: [build-and-test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
