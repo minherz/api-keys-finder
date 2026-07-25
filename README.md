@@ -1,5 +1,7 @@
 # Google Cloud API Keys Finder
 
+[![CI](https://github.com/minherz/api-keys-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/minherz/api-keys-finder/actions/workflows/ci.yml)
+
 An ultra-lightweight, high-performance Single Page Application (SPA) designed to audit and inspect active API keys across all accessible Google Cloud projects. Running entirely inside the browser with **zero backend dependencies**, it communicates directly with Google Cloud REST APIs to perform real-time security scanning, categorization, and restriction checks.
 
 ---
@@ -24,52 +26,6 @@ An ultra-lightweight, high-performance Single Page Application (SPA) designed to
     ├── utils.ts        # Helper libraries for date parsing, URL hashing, and clipboard copying
     └── utils.test.ts   # Unit tests for core utilities and restriction evaluators
 ```
-
----
-
-## ⚙️ Technical Design & Scanning Flows
-
-The application uses an optimized, hybrid scanning process to discover API keys across projects without hitting rate limits or crashing when encountering disabled services:
-
-```mermaid
-graph TD
-    A[Start Scan] --> B[Fetch CRM Projects]
-    B --> C{Projects Found?}
-    C -- No --> D[Report Search Complete]
-    C -- Yes --> E[Phase 1: Linear Scan]
-    
-    E --> F[Scan Next Project]
-    F --> G{Keys API Enabled?}
-    G -- No --> H[Queue to disabledProjectsToRetry] --> I{More Projects?}
-    G -- Yes (Success) --> J[Establish goodProjectId]
-    
-    I -- Yes --> F
-    I -- No --> K[Fallback: Report queued projects as disabled]
-    
-    J --> L[Phase 2: Transition to Concurrent Worker Queue]
-    L --> M[Pool Remaining + Queued Projects]
-    M --> N[Process Concurrent Workers (Limit: 4)]
-    N --> O[Borrow Quota from goodProjectId]
-    O --> P[Scan Project Keys]
-    P --> Q[Incremental Batch Render (DocumentFragment)]
-    Q --> R{Queue Exhausted?}
-    R -- No --> N
-    R -- Yes --> S[Scan Complete]
-```
-
-### 1. Phase 1: Sequential Discovery (Linear Scan)
-*   **The Problem:** Google Cloud API Keys API returns a `SERVICE_DISABLED` (403 Permission Denied) error if the API is not activated on the billing/quota project anchor passed via `X-Goog-User-Project`. In a typical user workspace, several projects might have the service disabled.
-*   **The Mitigation:** The scanner initiates sequential scanning (one project at a time). If a project throws a `ServiceDisabledError`, it is logged to a retry queue, and the scan continues.
-*   **Anchor Establishment:** The sequential phase breaks the instant it receives a successful response from any project. This project ID is remembered as `goodProjectId`.
-
-### 2. Phase 2: High-Velocity Parallel Sweep (Concurrent Scan)
-*   Once `goodProjectId` is established, the application instantly transitions the remaining unscanned projects and any previously queued disabled projects into a high-concurrency sweep.
-*   **Worker Pool:** Tasks are processed using a browser-safe, concurrency-controlled worker pool with a **concurrency limit of 4**.
-*   **Quota Borrowing:** Every parallel request leverages the verified `goodProjectId` as its billing project via the custom `x-goog-user-project` header. This completely bypasses the enablement block on disabled projects, fetching their keys successfully in a single roundtrip.
-
-### 3. Rendering: Optimized Reflow-Free DOM Appends
-*   To keep the "live-scanning" feel premium, key cards are updated incrementally.
-*   Instead of modifying the active DOM tree directly on every single key card (which triggers expensive browser layout reflows and repaints), the UI utilizes `document.createDocumentFragment()`. All nodes are built off-DOM and appended in a single, atomic batch pass per update.
 
 ---
 
