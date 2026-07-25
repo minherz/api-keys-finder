@@ -99,29 +99,40 @@ jobs:
           tags: |
             ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
 
-  # deploy-staging:
-  #   name: Deploy to Cloud Run Tagged Revision
-  #   needs: [build-container]
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     pull-requests: "write"
-  #     checks: "write"
-  #     contents: "read"
-  #     id-token: "write"
-  #   steps:
-  #     - name: Authenticate to Google Cloud
-  #       id: "auth"
-  #       uses: google-github-actions/auth@v3
-  #       with:
-  #         workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
-  #         service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-  #         # create_credentials_file: true # (Optional: True by default)
+  deploy-staging:
+    name: Deploy to Cloud Run Tagged Revision
+    needs: [build-container]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: "write"
+      checks: "write"
+      contents: "read"
+      id-token: "write"
+    steps:
+      - name: Authenticate to Google Cloud
+        id: "auth"
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # create_credentials_file: true # (Optional: True by default)
 
-  #     - name: Stage to Firebase
-  #       uses: minherz/firebase-hosting-deploy@v2
-  #       with:
-  #         repoToken: "${{ secrets.GITHUB_TOKEN }}"
-  #         firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
-  #         expires: "7d"
-  #         entryPoint: ./deploy/firebase
-  #         projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d #v3
+        with:
+          service: ${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}
+          region: ${{ vars.GCP_LOCATION }}
+          image: ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
+          flags: "--allow-unauthenticated --ingress=internal-and-cloud-load-balancing"
+          tag: ${{ github.event.pull_request.number }}
+          no_traffic: true # Keeps 100% of production traffic going to your main app
+
+      - name: Stage to Firebase Preview Channel
+        uses: minherz/firebase-hosting-deploy@v2
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          entryPoint: ./deploy/firebase
+          # This deploys a temporary channel named after your PR tag
+          channelId: ${{ github.event.pull_request.number }}
