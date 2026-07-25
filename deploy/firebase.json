@@ -11,14 +11,6 @@
                     "region": "us-east4",
                     "pinTag": true
                 }
-            },
-            {
-                "source": "/mindmap/**",
-                "run": {
-                    "serviceId": "mindmap-app",
-                    "region": "us-east4",
-                    "pinTag": true
-                }
             }
         ]
     }
