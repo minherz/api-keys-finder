@@ -188,3 +188,32 @@ export function formatDate(isoString?: string): string {
     return 'Unknown';
   }
 }
+
+/**
+ * Formats the copyright and version notice for display in the app footer.
+ * Supports hybrid versioning format (e.g. "v0.0.1+a1b2c3d" or "v1.2.0-b42+a1b2c3d").
+ */
+export function formatCopyrightVersion(
+  rawVersion?: string,
+  repoPath = 'minherz/api-keys-finder'
+): string {
+  const versionStr = rawVersion?.trim() || 'v0.0.1-preview';
+  const normalizedVersion = versionStr.startsWith('v')
+    ? versionStr
+    : `v${versionStr}`;
+
+  const plusIndex = normalizedVersion.indexOf('+');
+  if (plusIndex !== -1) {
+    const semverPart = normalizedVersion.substring(0, plusIndex);
+    const shaPart = normalizedVersion.substring(plusIndex + 1);
+
+    if (shaPart) {
+      const commitUrl = `https://github.com/${repoPath}/commit/${shaPart}`;
+      const commitLink = `<a href="${commitUrl}" target="_blank" rel="noopener noreferrer">${shaPart}</a>`;
+      return `&copy; 2026 Google API Keys Finder ${semverPart}+${commitLink}. All rights reserved.`;
+    }
+  }
+
+  return `&copy; 2026 Google API Keys Finder ${normalizedVersion}. All rights reserved.`;
+}
+

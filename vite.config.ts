@@ -29,10 +29,12 @@ export default defineConfig(({ mode }) => {
     );
   }
 
+  const appVersion = env.VITE_APP_VERSION || process.env.VITE_APP_VERSION || pkg.version;
+
   return {
     base: '/api-keys/',
     define: {
-      'import.meta.env.APP_VERSION': JSON.stringify(pkg.version),
+      'import.meta.env.APP_VERSION': JSON.stringify(appVersion),
     },
   };
 });

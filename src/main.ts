@@ -14,7 +14,7 @@
 
 import { AppState, ParsedApiKey, ApiKey } from './types';
 import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys } from './api';
-import { getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate } from './utils';
+import { getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate, formatCopyrightVersion } from './utils';
 import { login, logout, getAuthToken, getAuthScope } from './auth';
 
 // SVGs for Copy and Checked/Copied indicators (with pointer-events disabled for clean event bubbling)
@@ -689,11 +689,10 @@ function init() {
 
   handleOAuthSession();
 
-  // Set the application version dynamically from package.json in the status bar
+  // Set the application version dynamically in the status bar
   const copyrightElement = document.getElementById('copyright');
   if (copyrightElement) {
-    const version = `v${import.meta.env.APP_VERSION}` || '<unknown>';
-    copyrightElement.innerHTML = `&copy; 2026 Google API Keys Finder ${version}. All rights reserved.`;
+    copyrightElement.innerHTML = formatCopyrightVersion(import.meta.env.APP_VERSION);
   }
 }
 
