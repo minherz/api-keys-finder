@@ -16,6 +16,7 @@ An ultra-lightweight, high-performance Single Page Application (SPA) designed to
 ├── index.html          # Main HTML5 entrypoint and layout structure for the SPA
 ├── skills-lock.json    # Version lockfile for Antigravity AI custom developer skills
 ├── vite.config.ts       # Vite bundler configuration and environment setup
+├── vitest.config.ts     # Vitest test runner configuration for isolated unit testing
 └── src/                # Core application source code
     ├── api.ts          # Direct GCP REST API handshakes, customized errors, and headers
     ├── api.test.ts     # Mock REST client API tests (Vitest)

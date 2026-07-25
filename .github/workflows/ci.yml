@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'src/**'
       - 'vite.config.ts'
+      - 'vitest.config.ts'
 
 jobs:
   build-and-test:
@@ -30,6 +31,9 @@ jobs:
           minor_pattern: "feat:"
           version_format: "v${major}.${minor}.${patch}"
 
+      - name: Calculate Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -39,13 +43,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Calculate Short SHA
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-
       - name: Verify TypeScript and build SPA
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_OAUTH_CLIENT_ID }}
-          VITE_APP_VERSION: "${{ steps.version.outputs.version_tag }}+${{ env.SHORT_SHA }}"
+          VITE_APP_VERSION: "${{ steps.semver.outputs.version_tag }}+${{ env.SHORT_SHA }}"
         run: npm run build
 
       - name: Run unit tests
