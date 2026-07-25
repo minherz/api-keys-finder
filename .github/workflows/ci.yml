@@ -103,6 +103,8 @@ jobs:
     name: Deploy to Firebase Preview Channel
     needs: [build-container]
     runs-on: ubuntu-latest
+    env:
+      TAG_ID: pr-${{ github.event.pull_request.number }}
     permissions:
       pull-requests: "write"
       checks: "write"
@@ -124,7 +126,7 @@ jobs:
           region: ${{ vars.GCP_LOCATION }}
           image: ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
           flags: "--allow-unauthenticated --ingress=internal-and-cloud-load-balancing --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
-          tag: ${{ github.event.pull_request.number }}
+          tag: ${{ env.TAG_ID }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
 
       - name: Stage to Firebase Preview Channel
@@ -135,4 +137,4 @@ jobs:
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
           entryPoint: ./deploy/firebase
           # This deploys a temporary channel named after your PR tag
-          channelId: ${{ github.event.pull_request.number }}
+          channelId: ${{ env.TAG_ID }}
