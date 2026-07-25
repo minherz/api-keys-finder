@@ -1,0 +1,48 @@
+name: Deploy on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+    paths:
+      - 'web/*/**'
+    paths-ignore:
+      - '**/README.md'
+
+jobs:
+  version-bump-and-push:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git User
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Increment version patch number
+        run: npm version patch --no-git-tag-version
+
+      - name: Commit and push version change
+        run: |
+          git add package.json package-lock.json
+          git commit -m "chore: bump patch version to $(node -p "require('./package.json').version") [skip ci]"
+          git push origin main
+
+  deploy:
+    needs: version-bump-and-push
+    uses: ./.github/workflows/_firebase_deploy.yml
+    secrets:
+      PRODUCTION_CLIENT_ID: ${{ secrets.PRODUCTION_CLIENT_ID }}
+      FIREBASE_IDENTITY_PROVIDER: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}

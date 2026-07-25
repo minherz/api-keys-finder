@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+    paths:
+      - 'index.html'
+      - 'package.json'
+      - 'src/**'
+      - 'vite.config.ts'
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0    # fetch all history
+          filter: blob:none # exclude file contents for faster checkout
+
+      - name: Calculate Semantic Version
+        id: semver
+        uses: paulhatch/semantic-version@9f72830310d5ed81233b641ee59253644cd8a8fc # v6.0.2
+        with:
+          tag_prefix: "v"
+          minor_pattern: "feat:"
+          version_format: "v${major}.${minor}.${patch}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Calculate Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Verify TypeScript and build SPA
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_OAUTH_CLIENT_ID }}
+          VITE_APP_VERSION: "${{ steps.version.outputs.version_tag }}+${{ env.SHORT_SHA }}"
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Upload Built Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: dist
+          path: dist
+          retention-days: 1
+
+  build-container:
+    name: Deploy to Cloud Run Tagged Revision
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            deploy
+      - name: Download built application
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.CONTAINER_BUILD_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+          create_credentials_file: false
+      - name: Docker Auth
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ${{ env.GCP_LOCATION }}-docker.pkg.dev # Google Artifact Registry domain
+          username: 'oauth2accesstoken'
+          password: ${{ steps.auth.outputs.access_token }}
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
+
+  # deploy-staging:
+  #   name: Deploy to Cloud Run Tagged Revision
+  #   needs: [build-container]
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     pull-requests: "write"
+  #     checks: "write"
+  #     contents: "read"
+  #     id-token: "write"
+  #   steps:
+  #     - name: Authenticate to Google Cloud
+  #       id: "auth"
+  #       uses: google-github-actions/auth@v3
+  #       with:
+  #         workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
+  #         service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+  #         # create_credentials_file: true # (Optional: True by default)
+
+  #     - name: Stage to Firebase
+  #       uses: minherz/firebase-hosting-deploy@v2
+  #       with:
+  #         repoToken: "${{ secrets.GITHUB_TOKEN }}"
+  #         firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
+  #         expires: "7d"
+  #         entryPoint: ./deploy/firebase
+  #         projectId: ${{ secrets.FIREBASE_PROJECT_ID }}

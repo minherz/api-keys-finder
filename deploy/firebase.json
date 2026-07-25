@@ -1,0 +1,25 @@
+{
+    "hosting": {
+        "public": "public",
+        "cleanUrls": true,
+        "trailingSlash": false,
+        "rewrites": [
+            {
+                "source": "/api-keys/**",
+                "run": {
+                    "serviceId": "api-keys-app",
+                    "region": "us-east4",
+                    "pinTag": true
+                }
+            },
+            {
+                "source": "/mindmap/**",
+                "run": {
+                    "serviceId": "mindmap-app",
+                    "region": "us-east4",
+                    "pinTag": true
+                }
+            }
+        ]
+    }
+}

@@ -19,7 +19,8 @@ import {
   hasAppRestrictions,
   getRestrictionLevel,
   getHumanReadableRestrictions,
-  formatDate
+  formatDate,
+  formatCopyrightVersion
 } from './utils';
 import { ApiKeyRestrictions } from './types';
 
@@ -166,4 +167,40 @@ describe('utils.ts unit tests', () => {
       expect(formatted).toContain('2026');
     });
   });
+
+  describe('formatCopyrightVersion', () => {
+    it('should format version without short SHA', () => {
+      const result = formatCopyrightVersion('v0.0.1');
+      expect(result).toBe('&copy; 2026 Google API Keys Finder v0.0.1. All rights reserved.');
+    });
+
+    it('should format version with short SHA and create commit link', () => {
+      const result = formatCopyrightVersion('v1.2.0-b42+a1b2c3d');
+      expect(result).toBe(
+        '&copy; 2026 Google API Keys Finder v1.2.0-b42+<a href="https://github.com/minherz/api-keys-finder/commit/a1b2c3d" target="_blank" rel="noopener noreferrer">a1b2c3d</a>. All rights reserved.'
+      );
+    });
+
+    it('should handle undefined, empty string, and whitespace with fallback', () => {
+      const expectedFallback = '&copy; 2026 Google API Keys Finder v0.0.1-preview. All rights reserved.';
+      expect(formatCopyrightVersion(undefined)).toBe(expectedFallback);
+      expect(formatCopyrightVersion('')).toBe(expectedFallback);
+      expect(formatCopyrightVersion('   ')).toBe(expectedFallback);
+    });
+
+    it('should prepend v if version string lacks leading v', () => {
+      const result = formatCopyrightVersion('1.0.0+a1b2c3d');
+      expect(result).toBe(
+        '&copy; 2026 Google API Keys Finder v1.0.0+<a href="https://github.com/minherz/api-keys-finder/commit/a1b2c3d" target="_blank" rel="noopener noreferrer">a1b2c3d</a>. All rights reserved.'
+      );
+    });
+
+    it('should support custom repository path', () => {
+      const result = formatCopyrightVersion('v2.0.0+1234567', 'my-org/my-repo');
+      expect(result).toBe(
+        '&copy; 2026 Google API Keys Finder v2.0.0+<a href="https://github.com/my-org/my-repo/commit/1234567" target="_blank" rel="noopener noreferrer">1234567</a>. All rights reserved.'
+      );
+    });
+  });
 });
+

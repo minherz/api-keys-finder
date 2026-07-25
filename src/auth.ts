@@ -15,8 +15,11 @@
 // Declare the external Google Identity Services library global variable
 declare const google: any;
 
-// Hardcoded Google OAuth 2.0 Client ID (Configure your registered Client ID here)
-const GOOGLE_OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '315151726413-pqojn55eu1vqup2rq4q3ebl7qo17670a.apps.googleusercontent.com';
+// Google OAuth 2.0 Client ID read from environment variable
+const GOOGLE_OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
+if (!GOOGLE_OAUTH_CLIENT_ID) {
+  throw new Error('OAuth Client ID is undefined.');
+}
 
 interface AuthSession {
   token: string | null;
