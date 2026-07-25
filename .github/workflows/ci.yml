@@ -87,7 +87,7 @@ jobs:
       - name: Docker Auth
         uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
-          registry: ${{ env.GCP_LOCATION }}-docker.pkg.dev # Google Artifact Registry domain
+          registry: ${{ vars.GCP_LOCATION }}-docker.pkg.dev # Google Artifact Registry domain
           username: 'oauth2accesstoken'
           password: ${{ steps.auth.outputs.access_token }}
       - name: Build and Push Docker Image
@@ -96,7 +96,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
+            ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
 
   # deploy-staging:
   #   name: Deploy to Cloud Run Tagged Revision
