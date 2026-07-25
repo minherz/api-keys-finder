@@ -120,10 +120,10 @@ jobs:
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d #v3
         with:
-          service: ${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}
+          service: ${{ vars.SERVICE_NAME }}
           region: ${{ vars.GCP_LOCATION }}
           image: ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
-          flags: "--allow-unauthenticated --ingress=internal-and-cloud-load-balancing"
+          flags: "--allow-unauthenticated --ingress=internal-and-cloud-load-balancing --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
           tag: ${{ github.event.pull_request.number }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
 
