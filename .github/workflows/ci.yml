@@ -60,7 +60,7 @@ jobs:
           retention-days: 1
 
   build-container:
-    name: Deploy to Cloud Run Tagged Revision
+    name: Build and Push Container Image
     needs: [build-and-test]
     runs-on: ubuntu-latest
     permissions:
@@ -100,7 +100,7 @@ jobs:
             ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
 
   deploy-staging:
-    name: Deploy to Cloud Run Tagged Revision
+    name: Deploy to Firebase Preview Channel
     needs: [build-container]
     runs-on: ubuntu-latest
     permissions:
