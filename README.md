@@ -96,3 +96,6 @@ The scanner cannot bypass Cloud IAM resource policies. To see keys:
 ### 3. Service Enablement Constraints
 *   The scanner relies on the API Keys API (`apikeys.googleapi.com`) to query keys.
 *   At least **one** project in your accessible list **must have the API Keys API active**. Without at least one active project, the scanner cannot establish a `goodProjectId` to act as a billing anchor. In this rare scenario, the scan will gracefully complete with errors reporting that the API is disabled.
+
+### 4. Firebase Hosting Service Agent IAM Role
+When using Firebase Hosting rewrites to Cloud Run, the **Firebase Hosting Service Agent** (`service-<PROJECT_NUMBER>@gcp-sa-firebasehosting.iam.gserviceaccount.com`) must be granted the **Cloud Run Invoker** (`roles/run.invoker`) role on the Cloud Run service. This enables Firebase Hosting's proxy to invoke the underlying Cloud Run revision.
