@@ -103,7 +103,7 @@ jobs:
           file: deploy/Dockerfile
           push: true
           tags: |
-            ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:staged-${{ needs.build-and-test.outputs.short_sha }}
+            ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/api-keys-spa:staged-${{ needs.build-and-test.outputs.short_sha }}
 
   deploy-staging:
     name: Deploy to Firebase Preview Channel
