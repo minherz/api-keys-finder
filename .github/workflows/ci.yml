@@ -111,6 +111,11 @@ jobs:
       contents: "read"
       id-token: "write"
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            deploy
       - name: Authenticate to Google Cloud
         id: "auth"
         uses: google-github-actions/auth@v3
