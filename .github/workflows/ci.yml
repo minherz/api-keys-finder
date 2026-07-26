@@ -134,6 +134,9 @@ jobs:
           tag: ${{ env.TAG_ID }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
 
+      - name: Create Firebase Hosting public directory
+        run: mkdir -p deploy/public
+
       - name: Stage to Firebase Preview Channel
         uses: minherz/firebase-hosting-deploy@v2
         with:

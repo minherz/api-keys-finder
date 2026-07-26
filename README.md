@@ -73,6 +73,9 @@ The footer status bar displays the active application version using a hybrid for
 * The commit SHA is rendered as a clickable link leading directly to the commit on GitHub for operational traceability.
 * Pass `VITE_APP_VERSION` during CI/CD build steps to override the version string dynamically.
 
+### CI Preview Channel Deployment
+During the GitHub Actions CI workflow ([ci.yml](file:///.github/workflows/ci.yml)), a temporary `deploy/public` directory is created dynamically (`mkdir -p deploy/public`) right before invoking Firebase Hosting channel deployment. This satisfies Firebase CLI's directory existence check for `"public": "public"` in `deploy/firebase.json` without requiring empty placeholder directories to be committed to source control.
+
 ---
 
 ## 📋 Expectations & Pre-requisites
