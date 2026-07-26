@@ -16,6 +16,8 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.calc-sha.outputs.short_sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -32,7 +34,8 @@ jobs:
           version_format: "v${major}.${minor}.${patch}"
 
       - name: Calculate Short SHA
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        id: calc-sha
+        run: echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -46,7 +49,7 @@ jobs:
       - name: Verify TypeScript and build SPA
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_OAUTH_CLIENT_ID }}
-          VITE_APP_VERSION: "${{ steps.semver.outputs.version_tag }}+${{ env.SHORT_SHA }}"
+          VITE_APP_VERSION: "${{ steps.semver.outputs.version_tag }}+${{ steps.calc-sha.outputs.short_sha }}"
         run: npm run build
 
       - name: Run unit tests
@@ -66,6 +69,8 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
+    outputs:
+      image_tag: ${{ fromJSON(steps.docker-build.outputs.metadata)['image.name'] }}      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -97,7 +102,7 @@ jobs:
           file: deploy/Dockerfile
           push: true
           tags: |
-            ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
+            ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:staged-${{ needs.build-and-test.outputs.short_sha }}
 
   deploy-staging:
     name: Deploy to Firebase Preview Channel
@@ -129,7 +134,7 @@ jobs:
         with:
           service: ${{ vars.SERVICE_NAME }}
           region: ${{ vars.GCP_LOCATION }}
-          image: ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
+          image: ${{ needs.build-container.image_tag }}"
           flags: "--allow-unauthenticated --ingress=internal-and-cloud-load-balancing --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
           tag: ${{ env.TAG_ID }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
