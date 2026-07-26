@@ -1,6 +1,6 @@
 ARG WEB_SERVER_IMAGE
 FROM ${WEB_SERVER_IMAGE}
 
-COPY dist/ /app/public/
+COPY dist/ /app/public/api-keys/
 
 EXPOSE 8080
