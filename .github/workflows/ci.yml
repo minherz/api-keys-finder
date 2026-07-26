@@ -96,6 +96,7 @@ jobs:
           username: 'oauth2accesstoken'
           password: ${{ steps.auth.outputs.access_token }}
       - name: Build and Push Docker Image
+        id: docker-build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -134,7 +135,7 @@ jobs:
         with:
           service: ${{ vars.SERVICE_NAME }}
           region: ${{ vars.GCP_LOCATION }}
-          image: ${{ needs.build-container.image_tag }}"
+          image: ${{ needs.build-container.outputs.image_tag }}
           flags: "--allow-unauthenticated --ingress=internal-and-cloud-load-balancing --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
           tag: ${{ env.TAG_ID }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
