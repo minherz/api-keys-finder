@@ -135,6 +135,6 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
-          entryPoint: ./deploy/firebase
+          entryPoint: ./deploy
           # This deploys a temporary channel named after your PR tag
           channelId: ${{ env.TAG_ID }}
