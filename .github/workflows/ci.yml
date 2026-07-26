@@ -102,6 +102,8 @@ jobs:
           context: .
           file: deploy/Dockerfile
           push: true
+          build-args: |
+            WEB_SERVER_IMAGE=${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/ultra-light-web-server:latest
           tags: |
             ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/api-keys-spa:staged-${{ needs.build-and-test.outputs.short_sha }}
 
@@ -136,7 +138,7 @@ jobs:
           service: ${{ vars.SERVICE_NAME }}
           region: ${{ vars.GCP_LOCATION }}
           image: ${{ needs.build-container.outputs.image_tag }}
-          flags: "--no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
+          flags: "--no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing --cpu-boost --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
           tag: ${{ env.TAG_ID }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
 

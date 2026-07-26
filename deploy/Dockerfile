@@ -1,11 +1,6 @@
-FROM nginx:alpine
+ARG WEB_SERVER_IMAGE
+FROM ${WEB_SERVER_IMAGE}
 
-# Copy the app's Nginx configuration
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy built files into the application subdirectory to ensure it maps correctly from Firebase
-COPY dist/ /usr/share/nginx/html/api-keys/
+COPY dist/ /app/public/
 
 EXPOSE 8080
-
-CMD ["nginx", "-g", "daemon off;"]
