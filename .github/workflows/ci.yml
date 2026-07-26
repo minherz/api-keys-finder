@@ -75,8 +75,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          filter: blob:none
           sparse-checkout: |
             deploy
+          sparse-checkout-cone-mode: true
       - name: Download built application
         uses: actions/download-artifact@v4
         with:
