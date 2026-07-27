@@ -5,7 +5,15 @@
         "trailingSlash": false,
         "rewrites": [
             {
-                "source": "/api-keys**",
+                "source": "/api-keys",
+                "run": {
+                    "serviceId": "api-keys-app",
+                    "region": "us-east4",
+                    "pinTag": true
+                }
+            },
+            {
+                "source": "/api-keys/**",
                 "run": {
                     "serviceId": "api-keys-app",
                     "region": "us-east4",
