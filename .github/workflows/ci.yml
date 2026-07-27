@@ -10,11 +10,14 @@ on:
       - 'package.json'
       - 'src/**'
       - 'vite.config.ts'
+      - 'vitest.config.ts'
 
 jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.calc-sha.outputs.short_sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -30,6 +33,10 @@ jobs:
           minor_pattern: "feat:"
           version_format: "v${major}.${minor}.${patch}"
 
+      - name: Calculate Short SHA
+        id: calc-sha
+        run: echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -39,13 +46,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Calculate Short SHA
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-
       - name: Verify TypeScript and build SPA
         env:
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.DEV_OAUTH_CLIENT_ID }}
-          VITE_APP_VERSION: "${{ steps.version.outputs.version_tag }}+${{ env.SHORT_SHA }}"
+          VITE_APP_VERSION: "${{ steps.semver.outputs.version_tag }}+${{ steps.calc-sha.outputs.short_sha }}"
         run: npm run build
 
       - name: Run unit tests
@@ -59,15 +63,22 @@ jobs:
           retention-days: 1
 
   build-container:
-    name: Deploy to Cloud Run Tagged Revision
+    name: Build and Push Container Image
     needs: [build-and-test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+    outputs:
+      image_tag: ${{ fromJSON(steps.docker-build.outputs.metadata)['image.name'] }}      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          filter: blob:none
           sparse-checkout: |
             deploy
+          sparse-checkout-cone-mode: true
       - name: Download built application
         uses: actions/download-artifact@v4
         with:
@@ -83,40 +94,65 @@ jobs:
       - name: Docker Auth
         uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
-          registry: ${{ env.GCP_LOCATION }}-docker.pkg.dev # Google Artifact Registry domain
+          registry: ${{ vars.GCP_LOCATION }}-docker.pkg.dev # Google Artifact Registry domain
           username: 'oauth2accesstoken'
           password: ${{ steps.auth.outputs.access_token }}
       - name: Build and Push Docker Image
+        id: docker-build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
+          file: deploy/Dockerfile
           push: true
+          build-args: |
+            WEB_SERVER_IMAGE=${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/ultra-light-web-server:latest
           tags: |
-            ${{ env.GCP_LOCATION }}-docker.pkg.dev/${{ secrets.FIREBASE_PROJECT_ID }}/apps/api-keys-spa:${{ github.sha }}
+            ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/api-keys-spa:staged-${{ needs.build-and-test.outputs.short_sha }}
 
-  # deploy-staging:
-  #   name: Deploy to Cloud Run Tagged Revision
-  #   needs: [build-container]
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     pull-requests: "write"
-  #     checks: "write"
-  #     contents: "read"
-  #     id-token: "write"
-  #   steps:
-  #     - name: Authenticate to Google Cloud
-  #       id: "auth"
-  #       uses: google-github-actions/auth@v3
-  #       with:
-  #         workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
-  #         service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-  #         # create_credentials_file: true # (Optional: True by default)
+  deploy-staging:
+    name: Deploy to Firebase Preview Channel
+    needs: [build-container]
+    runs-on: ubuntu-latest
+    env:
+      TAG_ID: pr-${{ github.event.pull_request.number }}
+    permissions:
+      pull-requests: "write"
+      checks: "write"
+      contents: "read"
+      id-token: "write"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            deploy
+      - name: Authenticate to Google Cloud
+        id: "auth"
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.FIREBASE_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # create_credentials_file: true # (Optional: True by default)
 
-  #     - name: Stage to Firebase
-  #       uses: minherz/firebase-hosting-deploy@v2
-  #       with:
-  #         repoToken: "${{ secrets.GITHUB_TOKEN }}"
-  #         firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
-  #         expires: "7d"
-  #         entryPoint: ./deploy/firebase
-  #         projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d #v3
+        with:
+          service: ${{ vars.SERVICE_NAME }}
+          region: ${{ vars.GCP_LOCATION }}
+          image: ${{ needs.build-container.outputs.image_tag }}
+          flags: "--no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing --cpu-boost --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
+          tag: ${{ env.TAG_ID }}
+          no_traffic: true # Keeps 100% of production traffic going to your main app
+
+      - name: Create Firebase Hosting public directory
+        run: mkdir -p deploy/public
+
+      - name: Stage to Firebase Preview Channel
+        uses: minherz/firebase-hosting-deploy@v2
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          entryPoint: ./deploy
+          # This deploys a temporary channel named after your PR tag
+          channelId: ${{ env.TAG_ID }}

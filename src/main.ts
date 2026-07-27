@@ -696,6 +696,11 @@ function init() {
   }
 }
 
+function dummy() {
+  // placeholder to trigger CI
+  // will be removed
+}
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

@@ -1,11 +1,14 @@
-FROM nginx:alpine
+# 0. Base image URI should be set explicitly
+ARG WEB_SERVER_IMAGE
+FROM ${WEB_SERVER_IMAGE}
 
-# Copy the app's Nginx configuration
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+# 1. Physical location on disk for files
+ENV STATIC_DIR=/app/public
 
-# Copy built files into the application subdirectory to ensure it maps correctly from Firebase
-COPY dist/ /usr/share/nginx/html/api-keys/
+# 2. Virtual prefix to strip from incoming URLs
+ENV BASE_PATH=/api-keys
+
+# Copy built files directly into the root static directory
+COPY dist/ /app/public/
 
 EXPOSE 8080
-
-CMD ["nginx", "-g", "daemon off;"]
