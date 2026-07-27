@@ -1,8 +1,14 @@
+# 0. Base image URI should be set explicitly
 ARG WEB_SERVER_IMAGE
 FROM ${WEB_SERVER_IMAGE}
 
-# Need to serve at /api-keys/
+# 1. Physical location on disk for files
+ENV STATIC_DIR=/app/public
+
+# 2. Virtual prefix to strip from incoming URLs
 ENV BASE_PATH=/api-keys
-COPY dist/ /app/public/api-keys/
+
+# Copy built files directly into the root static directory
+COPY dist/ /app/public/
 
 EXPOSE 8080
