@@ -88,3 +88,5 @@ jobs:
           region: ${{ vars.GCP_LOCATION }}
           image: ${{ fromJSON(steps.docker-build.outputs.metadata)['image.name'] }}
           flags: "--no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing --cpu-boost --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
+          revision_traffic: 'LATEST=100'
+          skip_default_labels: true
