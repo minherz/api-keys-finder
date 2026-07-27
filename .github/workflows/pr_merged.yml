@@ -1,6 +1,7 @@
 name: Deploy on PR Merge
 
 on:
+  workflow_dispatch: {}
   pull_request:
     types: [closed]
     branches:
