@@ -14,7 +14,6 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: production-release
     permissions:
       contents: read
       id-token: write
