@@ -2,18 +2,9 @@
     "hosting": {
         "public": "public",
         "cleanUrls": true,
-        "trailingSlash": true,
         "rewrites": [
             {
-                "source": "/api-keys",
-                "run": {
-                    "serviceId": "api-keys-app",
-                    "region": "us-east4",
-                    "pinTag": true
-                }
-            },
-            {
-                "source": "/api-keys/**",
+                "source": "/api-keys{,/**}",
                 "run": {
                     "serviceId": "api-keys-app",
                     "region": "us-east4",
