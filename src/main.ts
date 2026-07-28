@@ -14,7 +14,7 @@
 
 import { AppState, ParsedApiKey, ApiKey } from './types';
 import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys } from './api';
-import { getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate, formatCopyrightVersion } from './utils';
+import { getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions } from './utils';
 import { login, logout, getAuthToken, getAuthScope } from './auth';
 
 // SVGs for Copy and Checked/Copied indicators (with pointer-events disabled for clean event bubbling)
@@ -48,6 +48,12 @@ const userProfileContainer = document.getElementById('user-profile') as HTMLDivE
 const userNameDisplay = document.getElementById('user-name') as HTMLSpanElement;
 const userAvatarDisplay = document.getElementById('user-avatar') as HTMLImageElement;
 
+// Profile dropdown selectors
+const btnProfileToggle = document.getElementById('btn-profile-toggle') as HTMLButtonElement;
+const profileDropdown = document.getElementById('profile-dropdown') as HTMLDivElement;
+const dropdownUserName = document.getElementById('dropdown-user-name') as HTMLDivElement;
+const dropdownUserEmail = document.getElementById('dropdown-user-email') as HTMLDivElement;
+
 const emptyStateContainer = document.getElementById('empty-state') as HTMLDivElement;
 const keysListContainer = document.getElementById('keys-list') as HTMLDivElement;
 
@@ -60,10 +66,6 @@ const btnProgressCancel = document.getElementById('btn-progress-cancel') as HTML
 const statusNotification = document.getElementById('status-notification') as HTMLSpanElement;
 const permissionLevelPill = document.getElementById('permission-level') as HTMLSpanElement;
 
-const signInModal = document.getElementById('sign-in-modal') as HTMLDivElement;
-const btnCloseModal = document.getElementById('btn-close-modal') as HTMLButtonElement;
-const btnCancelModal = document.getElementById('btn-cancel-modal') as HTMLButtonElement;
-const signInForm = document.getElementById('sign-in-form') as HTMLFormElement;
 
 const errorsModal = document.getElementById('errors-modal') as HTMLDivElement;
 const btnCloseErrorsModal = document.getElementById('btn-close-errors-modal') as HTMLButtonElement;
@@ -91,16 +93,6 @@ function updateStatusBar(message: string, isError: boolean = false, isClient: bo
   }
 }
 
-/**
- * Shows/Hides the Sign In Modal.
- */
-function setModalVisible(visible: boolean) {
-  if (visible) {
-    signInModal.classList.remove('hidden');
-  } else {
-    signInModal.classList.add('hidden');
-  }
-}
 
 /**
  * Shows/Hides the Errors Popup Modal.
@@ -143,7 +135,7 @@ function renderEmptyState() {
 
     const btnEmptySignInDynamic = document.getElementById('btn-empty-sign-in') as HTMLButtonElement;
     if (btnEmptySignInDynamic) {
-      btnEmptySignInDynamic.addEventListener('click', () => setModalVisible(true));
+      btnEmptySignInDynamic.addEventListener('click', () => redirectToGoogleOAuth('readonly'));
     }
   }
 }
@@ -195,6 +187,12 @@ async function handleOAuthSession() {
 
       // Render profile
       userNameDisplay.textContent = userProfile.name || userProfile.email;
+      if (dropdownUserName) {
+        dropdownUserName.textContent = userProfile.name || 'GCP Auditor';
+      }
+      if (dropdownUserEmail) {
+        dropdownUserEmail.textContent = userProfile.email;
+      }
       if (userProfile.picture) {
         userAvatarDisplay.src = userProfile.picture;
         userAvatarDisplay.alt = `Signed in as ${userProfile.name}. Click to Sign Out.`;
@@ -235,6 +233,10 @@ function handleSignOutState() {
   userProfileContainer.classList.add('hidden');
   btnSearchKeys.disabled = true;
 
+  if (profileDropdown) {
+    profileDropdown.classList.add('hidden');
+  }
+
   emptyStateContainer.classList.remove('hidden');
   keysListContainer.classList.add('hidden');
 
@@ -254,24 +256,7 @@ async function handleSignOut() {
   handleSignOutState();
 }
 
-// Static configuration mapping for restriction level visual badges (Color-blind friendly)
-const RESTRICTION_BADGE_CONFIGS = {
-  full: {
-    badgeClass: 'badge-full',
-    badgeIcon: '●',
-    badgeText: 'Fully Restricted'
-  },
-  some: {
-    badgeClass: 'badge-some',
-    badgeIcon: '◐',
-    badgeText: 'Partially Restricted'
-  },
-  none: {
-    badgeClass: 'badge-none',
-    badgeIcon: '○ ⚠',
-    badgeText: 'Unrestricted'
-  }
-} as const;
+// Dynamic badge configuration is computed inline inside renderKeysList based on active security profiles.
 
 /**
  * Displays/Updates the list of API Keys in the main area.
@@ -302,13 +287,47 @@ function renderKeysList() {
     const row = document.createElement('div');
     row.className = `key-item-row level-${key.restrictionLevel}`;
 
-    const config = RESTRICTION_BADGE_CONFIGS[key.restrictionLevel];
     const tooltipText = key.humanReadableRestrictions.join('\n');
+
+    // Dynamic badge and emoji configuration based on security profile
+    const api = hasApiRestrictions(key.rawRestrictions);
+    const app = hasAppRestrictions(key.rawRestrictions);
+    const hasSa = !!key.serviceAccountEmail;
+
+    let badgeIconEmoji = '🔓';
+    let badgeText = 'Some';
+    let badgeClass = 'badge-some';
+
+    if (!api && !app) {
+      // 🚨 None -- No restrictions found regardless whether key is bound or not to a service account
+      badgeIconEmoji = '🚨';
+      badgeText = 'None';
+      badgeClass = 'badge-none';
+    } else if (hasSa) {
+      // 🔐 Locked -- When API or Application restrictions are set and key is bound to a service account
+      badgeIconEmoji = '🔐';
+      badgeText = 'Locked';
+      badgeClass = 'badge-full';
+    } else if (api && app) {
+      // 🔒 Restricted -- When both API and Application restrictions are set but key is not bound to a service account
+      badgeIconEmoji = '🔒';
+      badgeText = 'Restricted';
+      badgeClass = 'badge-full';
+    } else {
+      // 🔓 Some -- If either API or Application restrictions are set but key is not bound to a service account
+      badgeIconEmoji = '🔓';
+      badgeText = 'Some';
+      badgeClass = 'badge-some';
+    }
 
     row.innerHTML = `
       <!-- Column 1: Display Name -->
       <div class="text-truncate-wrapper">
-        <span class="text-truncate" id="name-${key.uid}" title="${key.displayName}">${key.displayName}</span>
+        <span class="text-truncate" id="name-${key.uid}" title="${key.displayName}">
+          <a class="key-link" href="https://console.cloud.google.com/apis/credentials/key/${key.uid}?project=${key.projectId}" target="_blank" rel="noopener noreferrer">
+            ${key.displayName}
+          </a>
+        </span>
         <button class="btn btn-copy" data-copy-target="name-${key.uid}" title="Copy Name">${COPY_SVG}</button>
       </div>
       
@@ -329,10 +348,15 @@ function renderKeysList() {
       
       <!-- Column 4: Restriction Badge -->
       <div class="restriction-badge-container">
-        <div class="restriction-badge ${config.badgeClass}" title="${tooltipText}">
-          <span class="badge-icon">${config.badgeIcon}</span>
-          <span>${config.badgeText}</span>
+        <div class="restriction-badge ${badgeClass}" title="${tooltipText}">
+          <span class="badge-icon">${badgeIconEmoji}</span>
+          <span>${badgeText}</span>
         </div>
+      </div>
+
+      <!-- Column 5: Recommendations -->
+      <div class="key-recommendation-text">
+        ${getRecommendationText(key.rawRestrictions, key.serviceAccountEmail)}
       </div>
     `;
 
@@ -508,7 +532,7 @@ async function executeSearchWorkflow() {
         // Enrich keys with project metadata and parse restrictions
         const parsedKeys: ParsedApiKey[] = keys.map(k => {
           const restrictionLevel = getRestrictionLevel(k.restrictions);
-          const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions);
+          const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions, k.serviceAccountEmail);
 
           return {
             uid: k.uid,
@@ -517,7 +541,8 @@ async function executeSearchWorkflow() {
             createTime: k.createTime,
             rawRestrictions: k.restrictions || {},
             restrictionLevel,
-            humanReadableRestrictions
+            humanReadableRestrictions,
+            serviceAccountEmail: k.serviceAccountEmail
           };
         });
 
@@ -560,7 +585,7 @@ async function executeSearchWorkflow() {
 
               const parsedKeys: ParsedApiKey[] = keys.map(k => {
                 const restrictionLevel = getRestrictionLevel(k.restrictions);
-                const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions);
+                const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions, k.serviceAccountEmail);
 
                 return {
                   uid: k.uid,
@@ -569,7 +594,8 @@ async function executeSearchWorkflow() {
                   createTime: k.createTime,
                   rawRestrictions: k.restrictions || {},
                   restrictionLevel,
-                  humanReadableRestrictions
+                  humanReadableRestrictions,
+                  serviceAccountEmail: k.serviceAccountEmail
                 };
               });
 
@@ -652,28 +678,38 @@ async function executeSearchWorkflow() {
  * Attaches event listeners to DOM controls.
  */
 function setupEventListeners() {
-  btnShowSignIn.addEventListener('click', () => setModalVisible(true));
-  btnCloseModal.addEventListener('click', () => setModalVisible(false));
-  btnCancelModal.addEventListener('click', () => setModalVisible(false));
+  btnShowSignIn.addEventListener('click', () => redirectToGoogleOAuth('readonly'));
 
   btnCloseErrorsModal.addEventListener('click', () => setErrorsModalVisible(false));
   btnConfirmErrorsModal.addEventListener('click', () => setErrorsModalVisible(false));
 
-  // Sign Out click on avatar icon
+  // Profile dropdown toggle behaviour
+  if (btnProfileToggle) {
+    btnProfileToggle.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent document click listener from instantly closing the dropdown
+      profileDropdown.classList.toggle('hidden');
+    });
+  }
+
+  // Close dropdown on click outside
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (
+      profileDropdown &&
+      !profileDropdown.classList.contains('hidden') &&
+      !profileDropdown.contains(target) &&
+      !btnProfileToggle.contains(target)
+    ) {
+      profileDropdown.classList.add('hidden');
+    }
+  });
+
+  // Sign Out click on dropdown sign-out button
   btnSignOut.addEventListener('click', handleSignOut);
 
   // Fallback if Google picture fails to load
   userAvatarDisplay.addEventListener('error', () => {
     userAvatarDisplay.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="%23CBD5E0"/><text x="12" y="16" font-size="12" font-family="system-ui" font-weight="bold" fill="%234A5568" text-anchor="middle">👤</text></svg>';
-  });
-
-  // Form submit -> redirects to Google
-  signInForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const scopeType = (signInForm.elements.namedItem('input-scope') as RadioNodeList).value as 'readonly' | 'full';
-
-    setModalVisible(false);
-    redirectToGoogleOAuth(scopeType);
   });
 
   // Search API keys click trigger

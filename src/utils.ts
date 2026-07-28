@@ -94,12 +94,16 @@ export function getRestrictionLevel(restrictions?: ApiKeyRestrictions): Restrict
 /**
  * Formats restrictions into a human-readable list of strings for tooltips.
  */
-export function getHumanReadableRestrictions(restrictions?: ApiKeyRestrictions): string[] {
-  if (!restrictions) {
-    return ['No restrictions applied. This key is vulnerable and can be used to call any enabled API from any environment.'];
-  }
-
+export function getHumanReadableRestrictions(
+  restrictions?: ApiKeyRestrictions,
+  serviceAccountEmail?: string
+): string[] {
   const list: string[] = [];
+
+  if (!restrictions) {
+    list.push('No restrictions applied; can be used to call any enabled Google API');
+    return list;
+  }
 
   // API targets
   if (hasApiRestrictions(restrictions)) {
@@ -109,7 +113,7 @@ export function getHumanReadableRestrictions(restrictions?: ApiKeyRestrictions):
     });
     list.push(`API Restrictions: Restricted to ${targets.join(', ')}`);
   } else {
-    list.push('API Restrictions: None (can call any Google Cloud API)');
+    list.push('API Restrictions: None (can be used to call any enabled Google API)');
   }
 
   // Browser referrers
@@ -137,7 +141,14 @@ export function getHumanReadableRestrictions(restrictions?: ApiKeyRestrictions):
   }
 
   if (!hasAppRestrictions(restrictions)) {
-    list.push('Application Restrictions: None (can be called from any server, IP, website, or mobile application)');
+    list.push('Application Restrictions: None (can be used in calls from anywhere)');
+  }
+
+  // Service Account Binding status
+  if (serviceAccountEmail) {
+    list.push(`Service Account: Bound to a service account`);
+  } else {
+    list.push('Service Account: Not bound to a service account');
   }
 
   return list;
@@ -216,4 +227,37 @@ export function formatCopyrightVersion(
 
   return `&copy; 2026 Google API Keys Finder ${normalizedVersion}. All rights reserved.`;
 }
+
+/**
+ * Returns a human-readable security recommendation based on the key's restriction settings.
+ */
+export function getRecommendationText(restrictions?: ApiKeyRestrictions, serviceAccountEmail?: string): string {
+  const api = hasApiRestrictions(restrictions);
+  const app = hasAppRestrictions(restrictions);
+  const message: string[] = [];
+
+  if (!api && !app) {
+    message.push("This key poses critical security and financial risks and should be deleted or restricted as soon as possible.");
+    if (serviceAccountEmail) {
+      message.push("Bounding the key to service account doesn't provide sufficient protection.");
+    }
+  } else if (api && app) {
+    if (serviceAccountEmail) {
+      message.push("This key is secured.");
+    } else {
+      message.push("This key is restricted.");
+    }
+  } else if (api && !app) {
+    message.push("This key has API restrictions.");
+    if (serviceAccountEmail) {
+      message.push("Being bound to a service account increases protection level of the key.");
+    }
+    message.push("Consider setting application constraints to protect the key from unintended use in other applications.");
+  } else if (!api && app) {
+    message.push("This key can call ANY API from the restricted list of application(s), which is not secure.");
+  }
+  message.push("Use the key name link to review and modify the key's settings in the Cloud console.");
+  return message.join(" ");
+}
+
 

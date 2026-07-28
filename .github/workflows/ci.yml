@@ -140,7 +140,7 @@ jobs:
           service: ${{ vars.SERVICE_NAME }}
           region: ${{ vars.GCP_LOCATION }}
           image: ${{ needs.build-container.outputs.image_tag }}
-          flags: "--no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing --cpu-boost --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
+          flags: "--allow-unauthenticated --cpu-boost --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
           skip_default_labels: true
           tag: ${{ env.TAG_ID }}
           no_traffic: true # Keeps 100% of production traffic going to your main app
