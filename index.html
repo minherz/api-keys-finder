@@ -47,10 +47,23 @@
       </div>
       <div class="toolbar-right">
         <div id="user-profile" class="user-profile-container hidden">
-          <span id="user-name" class="user-name">Guest</span>
-          <button id="btn-sign-out" class="btn btn-icon-only" title="Sign Out">
-            <img id="user-avatar" class="user-avatar" src="" alt="Sign Out">
+          <button id="btn-profile-toggle" class="btn-profile-trigger" title="User Profile Menu">
+            <span id="user-name" class="user-name">Guest</span>
+            <img id="user-avatar" class="user-avatar" src="" alt="User Profile">
+            <span class="dropdown-arrow">▼</span>
           </button>
+          
+          <!-- Profile Dropdown Menu -->
+          <div id="profile-dropdown" class="profile-dropdown-menu hidden">
+            <div class="dropdown-user-info">
+              <div id="dropdown-user-name" class="dropdown-name">Guest</div>
+              <div id="dropdown-user-email" class="dropdown-email">guest@example.com</div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <button id="btn-sign-out" class="btn btn-danger-outline btn-full-width">
+              <span class="icon">🚪</span> Sign Out
+            </button>
+          </div>
         </div>
         <button id="btn-show-sign-in" class="btn btn-primary">
           Sign In with Google
@@ -66,6 +79,7 @@
           <div class="col-uid">Unique ID (UID)</div>
           <div class="col-project">Project ID</div>
           <div class="col-restriction">Restrictions</div>
+          <div class="col-recommendation">Recommendations</div>
         </div>
       </div>
       <div class="list-body-container">
@@ -110,48 +124,6 @@
     </footer>
   </div>
 
-  <!-- SIGN-IN POPUP / MODAL -->
-  <div id="sign-in-modal" class="modal-overlay hidden">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h2>Sign In with Google</h2>
-        <button id="btn-close-modal" class="btn-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-instructions">
-          This static application runs entirely in your browser and accesses Google Cloud APIs directly on your behalf using a hard-coded <strong>Google OAuth Client ID</strong>. Please ensure your Client ID is configured in the GCP Console with <strong>Authorized redirect URIs</strong> matching this origin.
-        </p>
-
-        <form id="sign-in-form">
-
-          <div class="form-group">
-            <label>Permission Scope <span class="required">*</span></label>
-            <div class="scope-options">
-              <label class="scope-radio-card">
-                <input type="radio" name="input-scope" value="readonly" checked>
-                <div class="radio-content">
-                  <span class="radio-title">Read-Only Access</span>
-                  <span class="radio-desc">Read and inspect your active projects and API keys. Safe and recommended.</span>
-                </div>
-              </label>
-              <label class="scope-radio-card">
-                <input type="radio" name="input-scope" value="full">
-                <div class="radio-content">
-                  <span class="radio-title">Full Access</span>
-                  <span class="radio-desc">Provides higher privileges, enabling administrative capabilities such as key deletion.</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <div class="modal-footer">
-            <button type="button" id="btn-cancel-modal" class="btn btn-secondary">Cancel</button>
-            <button type="submit" class="btn btn-primary">Sign In with Google</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
 
   <!-- ERRORS POPUP MODAL -->
   <div id="errors-modal" class="modal-overlay hidden">

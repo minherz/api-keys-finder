@@ -77,6 +77,7 @@ export interface ApiKey {
   createTime: string;
   updateTime?: string;
   restrictions?: ApiKeyRestrictions;
+  serviceAccountEmail?: string;
 }
 
 export interface ApiKeysListResponse {
@@ -94,6 +95,7 @@ export interface ParsedApiKey {
   rawRestrictions: ApiKeyRestrictions;
   restrictionLevel: RestrictionLevel;
   humanReadableRestrictions: string[];
+  serviceAccountEmail?: string;
 }
 
 export interface AppState {

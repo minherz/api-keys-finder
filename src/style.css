@@ -201,13 +201,104 @@ h4 {
   color: var(--text-primary);
 }
 
-/* User avatar and profile */
 .user-profile-container {
   display: flex;
   align-items: center;
   gap: 12px;
   border-left: 1px solid var(--border-light);
   padding-left: 16px;
+  position: relative; /* Set to relative so dropdown aligns absolute under it */
+}
+
+/* Profile Trigger Button */
+.btn-profile-trigger {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 20px;
+  color: var(--text-heavy);
+  transition: background-color 0.15s ease;
+}
+
+.btn-profile-trigger:hover {
+  background-color: var(--bg-hover);
+}
+
+.dropdown-arrow {
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.btn-profile-trigger:hover .dropdown-arrow {
+  color: var(--text-secondary);
+}
+
+/* Profile Dropdown Menu Card */
+.profile-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  width: 240px;
+  padding: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  animation: slideDownIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dropdown-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heavy);
+}
+
+.dropdown-email {
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background-color: var(--border-light);
+  margin: 4px 0;
+}
+
+.btn-full-width {
+  width: 100%;
+  justify-content: center;
+  font-size: 13px;
+  padding: 10px;
 }
 
 .user-name {
@@ -253,7 +344,7 @@ h4 {
 
 .list-header {
   display: grid;
-  grid-template-columns: 2fr 2.5fr 2fr 1.5fr;
+  grid-template-columns: 1.5fr 2fr 1.5fr 1.2fr 3fr;
   gap: 16px;
   height: 48px;
   align-items: center;
@@ -283,7 +374,7 @@ h4 {
   border: 1px solid var(--border-light);
   border-radius: 6px;
   display: grid;
-  grid-template-columns: 2fr 2.5fr 2fr 1.5fr;
+  grid-template-columns: 1.5fr 2fr 1.5fr 1.2fr 3fr;
   gap: 16px;
   padding: 16px;
   align-items: center;
@@ -327,6 +418,33 @@ h4 {
   font-weight: 500;
   cursor: default;
   /* Usual cursor instead of help question-mark */
+}
+
+/* Hyperlinks for API Key Display Names */
+.key-link {
+  color: var(--text-heavy);
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.key-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* Recommendations Column Styling */
+.key-recommendation-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* High risk emphasis for Unrestricted keys */
+.key-item-row.level-none .key-recommendation-text {
+  color: var(--status-error-text, #ef4444);
+  font-weight: 500;
 }
 
 .key-uid-sub,
