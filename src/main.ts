@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { AppState, ParsedApiKey, ApiKey } from './types';
+import { AppState, GcpProject } from './types';
 import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys } from './api';
-import { getRestrictionLevel, getHumanReadableRestrictions, copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions } from './utils';
+import { copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions, parseApiKey, runConcurrentTasks } from './utils';
 import { login, logout, getAuthToken, getAuthScope } from './auth';
 
 // SVGs for Copy and Checked/Copied indicators (with pointer-events disabled for clean event bubbling)
@@ -440,7 +440,10 @@ async function executeSearchWorkflow() {
     percentage: 0
   };
   state.keys = [];
-  const scanErrors: { projectId: string; message: string }[] = [];
+
+  // Track findings/errors
+  const permissionDeniedProjects: { projectId: string; message: string }[] = [];
+  const otherErrors: { projectId: string; message: string }[] = [];
 
   // Update UI Layout
   emptyStateContainer.classList.add('hidden');
@@ -457,182 +460,200 @@ async function executeSearchWorkflow() {
 
   updateStatusBar('Scanning Google Cloud projects...');
 
-  try {
-    // STEP 1: Fetch Projects
-    const projects = await fetchProjects(signal);
-    state.projects = projects;
+  let projects: GcpProject[] = [];
 
-    if (projects.length === 0) {
-      progressContainer.classList.add('hidden');
-      btnSearchKeys.classList.remove('hidden');
-      btnCancelSearch.classList.add('hidden');
-      renderKeysList();
-      updateStatusBar('Search complete. No projects found.');
+  // STEP 1: Handle Project List Failure separately
+  try {
+    projects = await fetchProjects(signal);
+    state.projects = projects;
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      cancelSearch();
       return;
     }
+    console.error('Failed to list Google Cloud projects:', err);
+    progressContainer.classList.add('hidden');
+    btnSearchKeys.classList.remove('hidden');
+    btnCancelSearch.classList.add('hidden');
 
-    // STEP 2: Configure state for Keys scanning
-    state.searchProgress.status = 'searching-keys';
-    state.searchProgress.totalProjects = projects.length;
+    let friendlyMessage = 'Failed to retrieve projects. ';
+    if (err instanceof AppError && (err.status === 401 || err.status === 403)) {
+      friendlyMessage += 'Please verify that your Google account has active access to Google Cloud and has granted "Cloud Platform" or "Cloud Platform (Read-Only)" scopes.';
+    } else {
+      friendlyMessage += err.message || 'Unknown network error.';
+    }
+    updateStatusBar(friendlyMessage, true, err.source === 'client');
+    return;
+  }
 
-    progressTextTitle.textContent = 'Scanning Active API Keys...';
+  if (projects.length === 0) {
+    progressContainer.classList.add('hidden');
+    btnSearchKeys.classList.remove('hidden');
+    btnCancelSearch.classList.add('hidden');
+    renderKeysList();
+    updateStatusBar('Search complete. No projects found.');
+    return;
+  }
 
-    // Tracking variables for dynamic quota routing
-    let goodProjectId: string | null = null;
-    const disabledProjectsToRetry: string[] = [];
-    let nextPhase1Index = 0;
+  // STEP 2: Configure state for Keys scanning
+  state.searchProgress.status = 'searching-keys';
+  state.searchProgress.totalProjects = projects.length;
 
-    // Phase 1: Loop through projects sequentially until the first goodProjectId is found
-    for (let i = 0; i < projects.length; i++) {
-      // Check cancellation state
+  progressTextTitle.textContent = 'Scanning Active API Keys...';
+
+  // State variables for batching & dynamic quota routing
+  let quotaProjectId: string | null = null;
+  const backlogProjects: string[] = [];
+  let completedUniqueCount = 0;
+
+  const BATCH_SIZE = 12;
+  const CONCURRENCY = 4;
+
+  // Process projects in batches of 12
+  try {
+    for (let batchStart = 0; batchStart < projects.length; batchStart += BATCH_SIZE) {
       if (signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
       }
 
-      const project = projects[i];
-      const percent = Math.round((i / projects.length) * 100);
+      const batchProjects = projects.slice(batchStart, batchStart + BATCH_SIZE);
+      const serviceDisabledToRetry: string[] = [];
 
-      // Update loading UI
-      progressTextDetails.textContent = `Scanning project ${i + 1} of ${projects.length}: ${project.projectId} (${percent}%)`;
-      progressBarFill.style.width = `${percent}%`;
-
-      updateStatusBar(`Scanning project: ${project.projectId}...`);
-
-      let keys: ApiKey[] = [];
-      let isSuccess = false;
-      let isServiceDisabled = false;
-
-      try {
-        // Fetch keys for this project
-        keys = await fetchProjectApiKeys(project.projectId, signal);
-        isSuccess = true;
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
-          throw err;
+      // A. DIRECT CONCURRENT SCAN PASS
+      await runConcurrentTasks(batchProjects, CONCURRENCY, async (project) => {
+        if (signal.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
         }
-        if (err instanceof ServiceDisabledError) {
-          isServiceDisabled = true;
-        } else {
-          console.error(`Error scanning keys for project ${project.projectId}:`, err);
-          scanErrors.push({
-            projectId: project.projectId,
-            message: err.message || 'Unknown error'
-          });
+
+        // Update progress bar detail
+        const itemIndex = completedUniqueCount + 1;
+        const percent = Math.round((itemIndex / projects.length) * 100);
+        progressTextDetails.textContent = `Scanning project ${itemIndex} of ${projects.length}: ${project.projectId} (${percent}%)`;
+        progressBarFill.style.width = `${percent}%`;
+
+        try {
+          updateStatusBar(`Scanning project: ${project.projectId}...`);
+          // Fetch direct (no quota borrow)
+          const keys = await fetchProjectApiKeys(project.projectId, signal);
+
+          // RULES 2 & 4: Successful direct scan updates the quotaProjectId
+          quotaProjectId = project.projectId;
+
+          // Parse and add keys
+          const parsedKeys = keys.map(k => parseApiKey(k, project.projectId));
+          state.keys = state.keys.concat(parsedKeys);
+          renderKeysList();
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            throw err;
+          }
+          if (err instanceof ServiceDisabledError) {
+            serviceDisabledToRetry.push(project.projectId);
+          } else if (err instanceof AppError && err.status === 403) {
+            // RULE 5: Keep track of actual permission denied issues as warnings
+            permissionDeniedProjects.push({
+              projectId: project.projectId,
+              message: err.message || 'Permission denied'
+            });
+          } else {
+            otherErrors.push({
+              projectId: project.projectId,
+              message: err.message || 'Unknown scan error'
+            });
+          }
+        } finally {
+          completedUniqueCount++;
         }
-      }
+      });
 
-      if (isServiceDisabled) {
-        disabledProjectsToRetry.push(project.projectId);
-      }
-
-      if (isSuccess) {
-        // Remember the successful project ID for billing/quota
-        goodProjectId = project.projectId;
-
-        // Enrich keys with project metadata and parse restrictions
-        const parsedKeys: ParsedApiKey[] = keys.map(k => {
-          const restrictionLevel = getRestrictionLevel(k.restrictions);
-          const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions, k.serviceAccountEmail);
-
-          return {
-            uid: k.uid,
-            displayName: k.displayName || 'Unnamed Key',
-            projectId: project.projectId,
-            createTime: k.createTime,
-            rawRestrictions: k.restrictions || {},
-            restrictionLevel,
-            humanReadableRestrictions,
-            serviceAccountEmail: k.serviceAccountEmail
-          };
-        });
-
-        // Add to state and re-render incremental list immediately
-        state.keys = state.keys.concat(parsedKeys);
-        renderKeysList();
-
-        nextPhase1Index = i + 1;
-        break; // Break loop on first success!
-      }
-
-      nextPhase1Index = i + 1;
-    }
-
-    // Phase 2: If a goodProjectId is found, run any remaining projects and previously queued
-    // disabled projects concurrently using a chunked promise queue (concurrency limit 4).
-    if (goodProjectId) {
-      const remainingProjects = projects.slice(nextPhase1Index);
-      const phase2ProjectIds = [
-        ...disabledProjectsToRetry,
-        ...remainingProjects.map(p => p.projectId)
-      ];
-
-      if (phase2ProjectIds.length > 0) {
-        const CONCURRENCY = 4;
-        let taskIndex = 0;
-        let completedUniqueCount = nextPhase1Index - disabledProjectsToRetry.length;
-
-        const runWorker = async () => {
-          while (taskIndex < phase2ProjectIds.length) {
+      // B. INTRA-BATCH RETRY PASS
+      if (serviceDisabledToRetry.length > 0) {
+        if (quotaProjectId) {
+          // Case A: We have a quota project, retry concurrently using it
+          const currentQuota = quotaProjectId; // Capture local reference
+          await runConcurrentTasks(serviceDisabledToRetry, CONCURRENCY, async (projectId) => {
             if (signal.aborted) {
               throw new DOMException('Aborted', 'AbortError');
             }
 
-            const currentProjectId = phase2ProjectIds[taskIndex++];
-
             try {
-              updateStatusBar(`Scanning project: ${currentProjectId} (concurrent)...`);
-              const keys = await fetchProjectApiKeys(currentProjectId, signal, goodProjectId);
+              updateStatusBar(`Scanning project ${projectId} borrowing quota from ${currentQuota}...`);
+              const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
 
-              const parsedKeys: ParsedApiKey[] = keys.map(k => {
-                const restrictionLevel = getRestrictionLevel(k.restrictions);
-                const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions, k.serviceAccountEmail);
+              // Update the shared quota project ID with latest success
+              quotaProjectId = projectId;
 
-                return {
-                  uid: k.uid,
-                  displayName: k.displayName || 'Unnamed Key',
-                  projectId: currentProjectId,
-                  createTime: k.createTime,
-                  rawRestrictions: k.restrictions || {},
-                  restrictionLevel,
-                  humanReadableRestrictions,
-                  serviceAccountEmail: k.serviceAccountEmail
-                };
-              });
-
+              const parsedKeys = keys.map(k => parseApiKey(k, projectId));
               state.keys = state.keys.concat(parsedKeys);
               renderKeysList();
             } catch (err: any) {
               if (err.name === 'AbortError') {
                 throw err;
               }
-              console.error(`Concurrent scan failed for project ${currentProjectId} using quota project ${goodProjectId}:`, err);
-              scanErrors.push({
-                projectId: currentProjectId,
-                message: err.message || 'Unknown error'
+              if (err instanceof AppError && err.status === 403) {
+                permissionDeniedProjects.push({
+                  projectId,
+                  message: err.message || 'Permission denied'
+                });
+              } else {
+                otherErrors.push({
+                  projectId,
+                  message: err.message || 'Quota retry failed'
+                });
+              }
+            }
+          });
+        } else {
+          // Case B: No quota project found yet, push all to global backlog
+          backlogProjects.push(...serviceDisabledToRetry);
+        }
+      }
+    }
+
+    // STEP B: POST-SCAN BACKLOG RETRIES
+    if (backlogProjects.length > 0) {
+      if (quotaProjectId) {
+        const currentQuota = quotaProjectId;
+        updateStatusBar(`Retrying ${backlogProjects.length} backlog project(s) using final quota project ${currentQuota}...`);
+
+        await runConcurrentTasks(backlogProjects, CONCURRENCY, async (projectId) => {
+          if (signal.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+          }
+
+          try {
+            const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
+
+            quotaProjectId = projectId;
+
+            const parsedKeys = keys.map(k => parseApiKey(k, projectId));
+            state.keys = state.keys.concat(parsedKeys);
+            renderKeysList();
+          } catch (err: any) {
+            if (err.name === 'AbortError') {
+              throw err;
+            }
+            if (err instanceof AppError && err.status === 403) {
+              permissionDeniedProjects.push({
+                projectId,
+                message: err.message || 'Permission denied'
               });
-            } finally {
-              completedUniqueCount++;
-              const percent = Math.round((completedUniqueCount / projects.length) * 100);
-              progressTextDetails.textContent = `Scanning project ${completedUniqueCount} of ${projects.length}: ${currentProjectId} (${percent}%)`;
-              progressBarFill.style.width = `${percent}%`;
+            } else {
+              otherErrors.push({
+                projectId,
+                message: err.message || 'Backlog scan failed'
+              });
             }
           }
-        };
-
-        const workers = Array.from(
-          { length: Math.min(CONCURRENCY, phase2ProjectIds.length) },
-          () => runWorker()
-        );
-        await Promise.all(workers);
-      }
-    } else {
-      // Fallback: No successful project found anywhere to borrow quota from. Report all as errors.
-      for (const failedProjId of disabledProjectsToRetry) {
-        console.warn(`API Keys service is disabled for project ${failedProjId} and no other project has it enabled to borrow quota.`);
-        scanErrors.push({
-          projectId: failedProjId,
-          message: `API Keys service has not been used in project ${failedProjId} before or it is disabled.`
         });
+      } else {
+        // No quota project could be established throughout the entire scan
+        for (const failedProjId of backlogProjects) {
+          otherErrors.push({
+            projectId: failedProjId,
+            message: 'API Keys service has not been used before and no other project could be established to borrow quota.'
+          });
+        }
       }
     }
 
@@ -645,16 +666,15 @@ async function executeSearchWorkflow() {
     btnSearchKeys.classList.remove('hidden');
     btnCancelSearch.classList.add('hidden');
 
-    if (scanErrors.length === 0) {
+    // RULE 5 & UI update: Present summary/warnings
+    if (permissionDeniedProjects.length === 0) {
       updateStatusBar(`Search complete. Found ${state.keys.length} API key(s) across ${projects.length} project(s).`);
-    } else if (scanErrors.length === 1) {
-      const rawMsg = scanErrors[0].message;
-      const truncated = rawMsg.length > 80 ? rawMsg.substring(0, 77) + '...' : rawMsg;
-      updateStatusBar(`⚠️ ${truncated}`, true, false);
     } else {
-      const summaryText = `During the scan, ${scanErrors.length} projects returned errors (such as disabled API Keys service or permission issues).`;
+      // Report lacking permissions only as warning on status bar
+      updateStatusBar(`⚠️ Scan complete. Lacked permissions to list keys on ${permissionDeniedProjects.length} project(s).`, true, false);
+
+      const summaryText = `During the scan, you lacked permissions to view keys on ${permissionDeniedProjects.length} project(s). These have been logged.`;
       setErrorsModalVisible(true, summaryText);
-      updateStatusBar(`⚠️ Scan complete with ${scanErrors.length} project errors. See Developer Console for details.`, true, false);
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {

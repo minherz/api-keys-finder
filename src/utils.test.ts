@@ -20,7 +20,9 @@ import {
   getRestrictionLevel,
   getHumanReadableRestrictions,
   formatDate,
-  formatCopyrightVersion
+  formatCopyrightVersion,
+  parseApiKey,
+  runConcurrentTasks
 } from './utils';
 import { ApiKeyRestrictions } from './types';
 
@@ -216,5 +218,92 @@ describe('utils.ts unit tests', () => {
       );
     });
   });
+
+  describe('parseApiKey', () => {
+    it('should parse an unrestricted key correctly with default fallback values', () => {
+      const rawKey = { uid: 'key-1', createTime: '2026-07-28T00:00:00Z' };
+      const parsed = parseApiKey(rawKey as any, 'proj-abc');
+      
+      expect(parsed.uid).toBe('key-1');
+      expect(parsed.displayName).toBe('Unnamed Key');
+      expect(parsed.projectId).toBe('proj-abc');
+      expect(parsed.restrictionLevel).toBe('none');
+      expect(parsed.rawRestrictions).toEqual({});
+      expect(parsed.humanReadableRestrictions).toEqual(['No restrictions applied; can be used to call any enabled Google API']);
+    });
+
+    it('should respect custom display name when provided', () => {
+      const rawKey = { uid: 'key-2', displayName: 'Production DB Key' };
+      const parsed = parseApiKey(rawKey as any, 'proj-xyz');
+      expect(parsed.displayName).toBe('Production DB Key');
+    });
+
+    it('should parse fully restricted keys correctly', () => {
+      const rawKey = {
+        uid: 'key-3',
+        restrictions: {
+          browserKeyRestrictions: { allowedReferrers: ['*.example.com'] },
+          apiTargets: [{ service: 'translate.googleapis.com' }]
+        }
+      };
+      const parsed = parseApiKey(rawKey as any, 'proj-123');
+      expect(parsed.restrictionLevel).toBe('full');
+      expect(parsed.rawRestrictions.apiTargets).toBeDefined();
+    });
+  });
+
+  describe('runConcurrentTasks', () => {
+    it('should execute the task function once for each item', async () => {
+      const items = [10, 20, 30];
+      const processed: number[] = [];
+
+      await runConcurrentTasks(items, 2, async (item) => {
+        processed.push(item);
+      });
+
+      expect(processed).toHaveLength(3);
+      expect(processed).toContain(10);
+      expect(processed).toContain(20);
+      expect(processed).toContain(30);
+    });
+
+    it('should strictly respect the maximum concurrency ceiling', async () => {
+      const items = [1, 2, 3, 4, 5];
+      let activeTasks = 0;
+      let maxSeenConcurrency = 0;
+
+      await runConcurrentTasks(items, 2, async () => {
+        activeTasks++;
+        maxSeenConcurrency = Math.max(maxSeenConcurrency, activeTasks);
+        
+        // Short async delay to guarantee overlap
+        await new Promise(resolve => setTimeout(resolve, 20));
+        
+        activeTasks--;
+      });
+
+      expect(maxSeenConcurrency).toBeLessThanOrEqual(2);
+    });
+
+    it('should resolve immediately and do nothing for empty arrays', async () => {
+      let runCount = 0;
+      await runConcurrentTasks([], 4, async () => {
+        runCount++;
+      });
+      expect(runCount).toBe(0);
+    });
+
+    it('should function correctly when concurrency is greater than the item list size', async () => {
+      const items = [1, 2];
+      const processed: number[] = [];
+
+      await runConcurrentTasks(items, 10, async (item) => {
+        processed.push(item);
+      });
+
+      expect(processed).toHaveLength(2);
+    });
+  });
 });
+
 

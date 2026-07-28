@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { ApiKeyRestrictions, RestrictionLevel } from './types';
+import { ApiKeyRestrictions, RestrictionLevel, ApiKey, ParsedApiKey } from './types';
 
 /**
  * Parses the URL hash parameters returned by Google OAuth.
@@ -258,6 +258,45 @@ export function getRecommendationText(restrictions?: ApiKeyRestrictions, service
   }
   message.push("Use the key name link to review and modify the key's settings in the Cloud console.");
   return message.join(" ");
+}
+
+/**
+ * Helper to parse a raw API Key resource from Google API into a ParsedApiKey.
+ */
+export function parseApiKey(k: ApiKey, projectId: string): ParsedApiKey {
+  const restrictionLevel = getRestrictionLevel(k.restrictions);
+  const humanReadableRestrictions = getHumanReadableRestrictions(k.restrictions, k.serviceAccountEmail);
+
+  return {
+    uid: k.uid,
+    displayName: k.displayName || 'Unnamed Key',
+    projectId: projectId,
+    createTime: k.createTime,
+    rawRestrictions: k.restrictions || {},
+    restrictionLevel,
+    humanReadableRestrictions,
+    serviceAccountEmail: k.serviceAccountEmail
+  };
+}
+
+/**
+ * Executes async tasks concurrently with a limit.
+ */
+export async function runConcurrentTasks<T>(
+  items: T[],
+  concurrency: number,
+  taskFn: (item: T) => Promise<void>
+) {
+  let index = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const itemIndex = index++;
+      if (itemIndex < items.length) {
+        await taskFn(items[itemIndex]);
+      }
+    }
+  });
+  await Promise.all(workers);
 }
 
 
