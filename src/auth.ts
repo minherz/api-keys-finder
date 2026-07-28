@@ -96,6 +96,7 @@ export function login(
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_OAUTH_CLIENT_ID,
       scope: scopesList.join(' '),
+      prompt: 'select_account',
       callback: (tokenResponse: any) => {
         if (tokenResponse.error) {
           console.error('Google Sign-In callback error:', tokenResponse.error);
