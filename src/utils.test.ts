@@ -139,7 +139,8 @@ describe('utils.ts unit tests', () => {
   describe('getHumanReadableRestrictions', () => {
     it('should return warning for undefined restrictions', () => {
       const text = getHumanReadableRestrictions(undefined);
-      expect(text[0]).toContain('No restrictions applied');
+      expect(text).toHaveLength(1);
+      expect(text[0]).toContain('No restrictions applied; can be used to call any enabled Google API');
     });
 
     it('should detail API and Application restrictions correctly', () => {
@@ -148,9 +149,22 @@ describe('utils.ts unit tests', () => {
         browserKeyRestrictions: { allowedReferrers: ['https://example.com/*'] }
       };
       const text = getHumanReadableRestrictions(r);
-      expect(text).toHaveLength(2);
+      expect(text).toHaveLength(3);
       expect(text[0]).toContain('API Restrictions: Restricted to sheets.googleapis.com (methods: GetValues)');
       expect(text[1]).toContain('Application Restrictions (Web/Browser): Allowed referrers: https://example.com/*');
+      expect(text[2]).toBe('Service Account: Not bound to a service account');
+    });
+
+    it('should detail service account binding correctly', () => {
+      const r: ApiKeyRestrictions = {
+        apiTargets: [{ service: 'sheets.googleapis.com', methods: ['GetValues'] }],
+        browserKeyRestrictions: { allowedReferrers: ['https://example.com/*'] }
+      };
+      const text = getHumanReadableRestrictions(r, 'app-service-account@project.iam.gserviceaccount.com');
+      expect(text).toHaveLength(3);
+      expect(text[0]).toContain('API Restrictions: Restricted to sheets.googleapis.com (methods: GetValues)');
+      expect(text[1]).toContain('Application Restrictions (Web/Browser): Allowed referrers: https://example.com/*');
+      expect(text[2]).toBe('Service Account: Bound to a service account');
     });
   });
 
