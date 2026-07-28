@@ -105,7 +105,7 @@ jobs:
           file: deploy/Dockerfile
           push: true
           build-args: |
-            WEB_SERVER_IMAGE=${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/ultra-light-web-server:latest
+            WEB_SERVER_IMAGE=${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/lightweight-web-server:latest
           tags: |
             ${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.REPOSITORY_NAME }}/api-keys-spa:staged-${{ needs.build-and-test.outputs.short_sha }}
 
