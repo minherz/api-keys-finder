@@ -509,6 +509,8 @@ async function executeSearchWorkflow() {
   const BATCH_SIZE = 12;
   const CONCURRENCY = 4;
 
+  console.log(`[SCANNER_DEBUG] Starting search workflow. Total projects to scan: ${projects.length}`);
+
   // Process projects in batches of 12
   try {
     for (let batchStart = 0; batchStart < projects.length; batchStart += BATCH_SIZE) {
@@ -518,6 +520,10 @@ async function executeSearchWorkflow() {
 
       const batchProjects = projects.slice(batchStart, batchStart + BATCH_SIZE);
       const serviceDisabledToRetry: string[] = [];
+
+      console.log(`[SCANNER_DEBUG] --- Starting Batch [${batchStart} to ${batchStart + batchProjects.length}] ---`);
+      console.log(`[SCANNER_DEBUG] Batch projects:`, batchProjects.map(p => p.projectId));
+      console.log(`[SCANNER_DEBUG] Active quotaProjectId anchor: ${quotaProjectId}`);
 
       // A. DIRECT CONCURRENT SCAN PASS
       await runConcurrentTasks(batchProjects, CONCURRENCY, async (project) => {
@@ -533,17 +539,20 @@ async function executeSearchWorkflow() {
 
         try {
           updateStatusBar(`Scanning project: ${project.projectId}...`);
+          console.log(`[SCANNER_DEBUG] [Direct Scan] Fetching keys for: ${project.projectId}`);
           // Fetch direct (no quota borrow)
           const keys = await fetchProjectApiKeys(project.projectId, signal);
 
           // RULES 2 & 4: Successful direct scan updates the quotaProjectId
           quotaProjectId = project.projectId;
+          console.log(`[SCANNER_DEBUG] [Direct Scan] SUCCESS on project: ${project.projectId}. Found ${keys.length} keys. NEW quotaProjectId anchor: ${quotaProjectId}`);
 
           // Parse and add keys
           const parsedKeys = keys.map(k => parseApiKey(k, project.projectId));
           state.keys = state.keys.concat(parsedKeys);
           renderKeysList();
         } catch (err: any) {
+          console.log(`[SCANNER_DEBUG] [Direct Scan] ERROR on project: ${project.projectId}. ErrorName: ${err.name || err.constructor.name}, Status: ${err.status}, Message: "${err.message}"`);
           if (err.name === 'AbortError') {
             throw err;
           }
@@ -567,22 +576,28 @@ async function executeSearchWorkflow() {
       });
 
       // B. INTRA-BATCH RETRY PASS
+      console.log(`[SCANNER_DEBUG] Batch direct scan completed. Projects flagged as SERVICE_DISABLED to retry in-batch:`, serviceDisabledToRetry);
       if (serviceDisabledToRetry.length > 0) {
         if (quotaProjectId) {
           // Case A: We have a quota project, retry concurrently using it
           const currentQuota = quotaProjectId; // Capture local reference
+          console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] Retrying service-disabled projects borrowing quota from: ${currentQuota}`);
           await runConcurrentTasks(serviceDisabledToRetry, CONCURRENCY, async (projectId) => {
             if (signal.aborted) {
               throw new DOMException('Aborted', 'AbortError');
             }
 
             try {
+              console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] Scanning ${projectId} borrowing quota from ${currentQuota}...`);
               const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
+
+              console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] SUCCESS on project: ${projectId} (borrowing from ${currentQuota}). Found ${keys.length} keys.`);
 
               const parsedKeys = keys.map(k => parseApiKey(k, projectId));
               state.keys = state.keys.concat(parsedKeys);
               renderKeysList();
             } catch (err: any) {
+              console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] FAILED on project: ${projectId} (borrowing from ${currentQuota}). ErrorName: ${err.name || err.constructor.name}, Status: ${err.status}, Message: "${err.message}"`);
               if (err.name === 'AbortError') {
                 throw err;
               }
@@ -601,23 +616,32 @@ async function executeSearchWorkflow() {
           });
         } else {
           // Case B: No quota project found yet, push all to global backlog
+          console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] No quotaProjectId available yet. Deferring projects to global backlog:`, serviceDisabledToRetry);
           backlogProjects.push(...serviceDisabledToRetry);
         }
       }
     }
 
     // STEP B: POST-SCAN BACKLOG RETRIES
+    console.log(`[SCANNER_DEBUG] === Direct Batches Complete ===`);
+    console.log(`[SCANNER_DEBUG] Final global backlogProjects to retry:`, backlogProjects);
+    console.log(`[SCANNER_DEBUG] Final quotaProjectId anchor established: ${quotaProjectId}`);
+
     if (backlogProjects.length > 0) {
       if (quotaProjectId) {
         const currentQuota = quotaProjectId;
         updateStatusBar(`Retrying ${backlogProjects.length} backlog project(s) using final quota project ${currentQuota}...`);
+        console.log(`[SCANNER_DEBUG] [Backlog Retry] Starting backlog retry of ${backlogProjects.length} projects borrowing quota from: ${currentQuota}`);
 
         await runConcurrentTasks(backlogProjects, CONCURRENCY, async (projectId) => {
           if (signal.aborted) {
             throw new DOMException('Aborted', 'AbortError');
           }
           try {
+            console.log(`[SCANNER_DEBUG] [Backlog Retry] Scanning ${projectId} borrowing quota from ${currentQuota}...`);
             const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
+
+            console.log(`[SCANNER_DEBUG] [Backlog Retry] SUCCESS on project: ${projectId} (borrowing from ${currentQuota}). Found ${keys.length} keys.`);
 
             // NOTE: We do NOT update quotaProjectId here, because this project
             // has the service disabled and only succeeded via quota borrowing.
@@ -626,6 +650,7 @@ async function executeSearchWorkflow() {
             state.keys = state.keys.concat(parsedKeys);
             renderKeysList();
           } catch (err: any) {
+            console.log(`[SCANNER_DEBUG] [Backlog Retry] FAILED on project: ${projectId} (borrowing from ${currentQuota}). ErrorName: ${err.name || err.constructor.name}, Status: ${err.status}, Message: "${err.message}"`);
             if (err.name === 'AbortError') {
               throw err;
             }
@@ -644,6 +669,7 @@ async function executeSearchWorkflow() {
         });
       } else {
         // No quota project could be established throughout the entire scan
+        console.log(`[SCANNER_DEBUG] [Backlog Retry] CRITICAL: No valid quotaProjectId was established throughout the entire run. All backlog projects will report service disabled errors.`);
         for (const failedProjId of backlogProjects) {
           otherErrors.push({
             projectId: failedProjId,
