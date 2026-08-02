@@ -299,4 +299,55 @@ export async function runConcurrentTasks<T>(
   await Promise.all(workers);
 }
 
+/**
+ * A standard, clean delay promise.
+ */
+export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+export interface ScannerConfig {
+  debug: boolean;
+  threshold: number;
+}
+
+/**
+ * Retrieves the scanner configuration from LocalStorage with clean fallbacks.
+ */
+export function getScannerConfig(): ScannerConfig {
+  let debug = false;
+  let threshold = 64;
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      debug = localStorage.getItem('api_keys_scanner_debug') === 'true';
+      
+      const storedThreshold = localStorage.getItem('api_keys_scanner_threshold');
+      if (storedThreshold !== null) {
+        const parsed = parseInt(storedThreshold, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          threshold = parsed;
+        }
+      }
+    }
+  } catch {
+    // Fallbacks if localStorage is blocked or not available
+  }
+
+  return { debug, threshold };
+}
+
+/**
+ * Checks if verbose diagnostic log printing is enabled via LocalStorage.
+ * Enable by running: localStorage.setItem('api_keys_scanner_debug', 'true')
+ */
+export function isDebugLogEnabled(): boolean {
+  return getScannerConfig().debug;
+}
+
+/**
+ * Logs a standard debug message if debug logging is enabled.
+ */
+export function logDebug(message: string, ...optionalParams: any[]) {
+  if (isDebugLogEnabled()) {
+    console.log(`[SCANNER_DEBUG] ${message}`, ...optionalParams);
+  }
+}

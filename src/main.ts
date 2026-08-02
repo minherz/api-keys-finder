@@ -13,9 +13,11 @@
 // limitations under the License.
 
 import { AppState, GcpProject } from './types';
-import { AppError, ServiceDisabledError, fetchUserProfile, fetchProjects, fetchProjectApiKeys } from './api';
-import { copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions, parseApiKey, runConcurrentTasks } from './utils';
+import { AppError, fetchUserProfile, fetchProjects } from './api';
+import { copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions, logDebug, getScannerConfig } from './utils';
 import { login, logout, getAuthToken, getAuthScope } from './auth';
+import { executeLinearScan } from './scan-linear';
+import { executeParallelScan } from './scan-parallel';
 
 // SVGs for Copy and Checked/Copied indicators (with pointer-events disabled for clean event bubbling)
 const COPY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
@@ -501,183 +503,46 @@ async function executeSearchWorkflow() {
 
   progressTextTitle.textContent = 'Scanning Active API Keys...';
 
-  // State variables for batching & dynamic quota routing
-  let quotaProjectId: string | null = null;
-  const backlogProjects: string[] = [];
-  let completedUniqueCount = 0;
+  // Progress and error callbacks
+  const onProgress = (completedIndex: number, projectId: string) => {
+    const percent = Math.round((completedIndex / projects.length) * 100);
+    progressTextDetails.textContent = `Scanning project ${completedIndex} of ${projects.length}: ${projectId} (${percent}%)`;
+    progressBarFill.style.width = `${percent}%`;
+    updateStatusBar(`Scanning project: ${projectId}...`);
+  };
 
-  const BATCH_SIZE = 12;
-  const CONCURRENCY = 4;
+  const onResult = (parsedKeys: any[], _projectId: string) => {
+    state.keys = state.keys.concat(parsedKeys);
+    renderKeysList();
+  };
 
-  console.log(`[SCANNER_DEBUG] Starting search workflow. Total projects to scan: ${projects.length}`);
-
-  // Process projects in batches of 12
-  try {
-    for (let batchStart = 0; batchStart < projects.length; batchStart += BATCH_SIZE) {
-      if (signal.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
-      }
-
-      const batchProjects = projects.slice(batchStart, batchStart + BATCH_SIZE);
-      const serviceDisabledToRetry: string[] = [];
-
-      console.log(`[SCANNER_DEBUG] --- Starting Batch [${batchStart} to ${batchStart + batchProjects.length}] ---`);
-      console.log(`[SCANNER_DEBUG] Batch projects:`, batchProjects.map(p => p.projectId));
-      console.log(`[SCANNER_DEBUG] Active quotaProjectId anchor: ${quotaProjectId}`);
-
-      // A. DIRECT CONCURRENT SCAN PASS
-      await runConcurrentTasks(batchProjects, CONCURRENCY, async (project) => {
-        if (signal.aborted) {
-          throw new DOMException('Aborted', 'AbortError');
-        }
-
-        // Update progress bar detail
-        const itemIndex = completedUniqueCount + 1;
-        const percent = Math.round((itemIndex / projects.length) * 100);
-        progressTextDetails.textContent = `Scanning project ${itemIndex} of ${projects.length}: ${project.projectId} (${percent}%)`;
-        progressBarFill.style.width = `${percent}%`;
-
-        try {
-          updateStatusBar(`Scanning project: ${project.projectId}...`);
-          console.log(`[SCANNER_DEBUG] [Direct Scan] Fetching keys for: ${project.projectId}`);
-          // Fetch direct (no quota borrow)
-          const keys = await fetchProjectApiKeys(project.projectId, signal);
-
-          // RULES 2 & 4: Successful direct scan updates the quotaProjectId
-          quotaProjectId = project.projectId;
-          console.log(`[SCANNER_DEBUG] [Direct Scan] SUCCESS on project: ${project.projectId}. Found ${keys.length} keys. NEW quotaProjectId anchor: ${quotaProjectId}`);
-
-          // Parse and add keys
-          const parsedKeys = keys.map(k => parseApiKey(k, project.projectId));
-          state.keys = state.keys.concat(parsedKeys);
-          renderKeysList();
-        } catch (err: any) {
-          console.log(`[SCANNER_DEBUG] [Direct Scan] ERROR on project: ${project.projectId}. ErrorName: ${err.name || err.constructor.name}, Status: ${err.status}, Message: "${err.message}"`);
-          if (err.name === 'AbortError') {
-            throw err;
-          }
-          if (err instanceof ServiceDisabledError) {
-            serviceDisabledToRetry.push(project.projectId);
-          } else if (err instanceof AppError && err.status === 403) {
-            // RULE 5: Keep track of actual permission denied issues as warnings
-            permissionDeniedProjects.push({
-              projectId: project.projectId,
-              message: err.message || 'Permission denied'
-            });
-          } else {
-            otherErrors.push({
-              projectId: project.projectId,
-              message: err.message || 'Unknown scan error'
-            });
-          }
-        } finally {
-          completedUniqueCount++;
-        }
+  const onError = (err: any, projectId: string) => {
+    if (err instanceof AppError && err.status === 403) {
+      permissionDeniedProjects.push({
+        projectId,
+        message: err.message || 'Permission denied'
       });
+    } else {
+      otherErrors.push({
+        projectId,
+        message: err.message || 'Unknown scan error'
+      });
+    }
+  };
 
-      // B. INTRA-BATCH RETRY PASS
-      console.log(`[SCANNER_DEBUG] Batch direct scan completed. Projects flagged as SERVICE_DISABLED to retry in-batch:`, serviceDisabledToRetry);
-      if (serviceDisabledToRetry.length > 0) {
-        if (quotaProjectId) {
-          // Case A: We have a quota project, retry concurrently using it
-          const currentQuota = quotaProjectId; // Capture local reference
-          console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] Retrying service-disabled projects borrowing quota from: ${currentQuota}`);
-          await runConcurrentTasks(serviceDisabledToRetry, CONCURRENCY, async (projectId) => {
-            if (signal.aborted) {
-              throw new DOMException('Aborted', 'AbortError');
-            }
+  try {
+    let result: { quotaProject: string | null };
+    const config = getScannerConfig();
 
-            try {
-              console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] Scanning ${projectId} borrowing quota from ${currentQuota}...`);
-              const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
-
-              console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] SUCCESS on project: ${projectId} (borrowing from ${currentQuota}). Found ${keys.length} keys.`);
-
-              const parsedKeys = keys.map(k => parseApiKey(k, projectId));
-              state.keys = state.keys.concat(parsedKeys);
-              renderKeysList();
-            } catch (err: any) {
-              console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] FAILED on project: ${projectId} (borrowing from ${currentQuota}). ErrorName: ${err.name || err.constructor.name}, Status: ${err.status}, Message: "${err.message}"`);
-              if (err.name === 'AbortError') {
-                throw err;
-              }
-              if (err instanceof AppError && err.status === 403) {
-                permissionDeniedProjects.push({
-                  projectId,
-                  message: err.message || 'Permission denied'
-                });
-              } else {
-                otherErrors.push({
-                  projectId,
-                  message: err.message || 'Quota retry failed'
-                });
-              }
-            }
-          });
-        } else {
-          // Case B: No quota project found yet, push all to global backlog
-          console.log(`[SCANNER_DEBUG] [Intra-Batch Retry] No quotaProjectId available yet. Deferring projects to global backlog:`, serviceDisabledToRetry);
-          backlogProjects.push(...serviceDisabledToRetry);
-        }
-      }
+    if (projects.length < config.threshold) {
+      logDebug(`Project count (${projects.length}) < threshold (${config.threshold}). Selecting LINEAR scan path.`);
+      result = await executeLinearScan(projects, signal, onProgress, onResult, onError);
+    } else {
+      logDebug(`Project count (${projects.length}) >= threshold (${config.threshold}). Selecting PARALLEL scan path.`);
+      result = await executeParallelScan(projects, signal, onProgress, onResult, onError);
     }
 
-    // STEP B: POST-SCAN BACKLOG RETRIES
-    console.log(`[SCANNER_DEBUG] === Direct Batches Complete ===`);
-    console.log(`[SCANNER_DEBUG] Final global backlogProjects to retry:`, backlogProjects);
-    console.log(`[SCANNER_DEBUG] Final quotaProjectId anchor established: ${quotaProjectId}`);
-
-    if (backlogProjects.length > 0) {
-      if (quotaProjectId) {
-        const currentQuota = quotaProjectId;
-        updateStatusBar(`Retrying ${backlogProjects.length} backlog project(s) using final quota project ${currentQuota}...`);
-        console.log(`[SCANNER_DEBUG] [Backlog Retry] Starting backlog retry of ${backlogProjects.length} projects borrowing quota from: ${currentQuota}`);
-
-        await runConcurrentTasks(backlogProjects, CONCURRENCY, async (projectId) => {
-          if (signal.aborted) {
-            throw new DOMException('Aborted', 'AbortError');
-          }
-          try {
-            console.log(`[SCANNER_DEBUG] [Backlog Retry] Scanning ${projectId} borrowing quota from ${currentQuota}...`);
-            const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
-
-            console.log(`[SCANNER_DEBUG] [Backlog Retry] SUCCESS on project: ${projectId} (borrowing from ${currentQuota}). Found ${keys.length} keys.`);
-
-            // NOTE: We do NOT update quotaProjectId here, because this project
-            // has the service disabled and only succeeded via quota borrowing.
-
-            const parsedKeys = keys.map(k => parseApiKey(k, projectId));
-            state.keys = state.keys.concat(parsedKeys);
-            renderKeysList();
-          } catch (err: any) {
-            console.log(`[SCANNER_DEBUG] [Backlog Retry] FAILED on project: ${projectId} (borrowing from ${currentQuota}). ErrorName: ${err.name || err.constructor.name}, Status: ${err.status}, Message: "${err.message}"`);
-            if (err.name === 'AbortError') {
-              throw err;
-            }
-            if (err instanceof AppError && err.status === 403) {
-              permissionDeniedProjects.push({
-                projectId,
-                message: err.message || 'Permission denied'
-              });
-            } else {
-              otherErrors.push({
-                projectId,
-                message: err.message || 'Backlog scan failed'
-              });
-            }
-          }
-        });
-      } else {
-        // No quota project could be established throughout the entire scan
-        console.log(`[SCANNER_DEBUG] [Backlog Retry] CRITICAL: No valid quotaProjectId was established throughout the entire run. All backlog projects will report service disabled errors.`);
-        for (const failedProjId of backlogProjects) {
-          otherErrors.push({
-            projectId: failedProjId,
-            message: 'API Keys service has not been used before and no other project could be established to borrow quota.'
-          });
-        }
-      }
-    }
+    logDebug(`Scan execution path completed. Final quotaProjectId established: ${result.quotaProject}`);
 
     // STEP 3: Complete scan
     state.searchProgress.status = 'complete';

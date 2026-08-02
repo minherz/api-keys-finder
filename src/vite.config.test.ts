@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+declare let process: any;
+
 import { describe, it, expect, beforeEach } from 'vitest';
 import viteConfig from '../vite.config';
 
