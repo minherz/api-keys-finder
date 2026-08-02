@@ -299,4 +299,28 @@ export async function runConcurrentTasks<T>(
   await Promise.all(workers);
 }
 
+/**
+ * A standard, clean delay promise.
+ */
+export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/**
+ * Checks if verbose diagnostic log printing is enabled via LocalStorage.
+ * Enable by running: localStorage.setItem('api_keys_scanner_debug', 'true')
+ */
+export function isDebugLogEnabled(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('api_keys_scanner_debug') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Logs a standard debug message if debug logging is enabled.
+ */
+export function logDebug(message: string, ...optionalParams: any[]) {
+  if (isDebugLogEnabled()) {
+    console.log(`[SCANNER_DEBUG] ${message}`, ...optionalParams);
+  }
+}
