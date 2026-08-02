@@ -12,26 +12,20 @@ An ultra-lightweight, high-performance Single Page Application (SPA) designed to
 /
 ├── .devcontainer/       # Dev container configuration for instant workspace setup
 ├── deploy/              # Cloud Run Dockerfile, Nginx config, and Firebase deployment specs
-├── firebase.json        # Firebase hosting configuration
-├── index.html          # Main HTML5 entrypoint and layout structure for the SPA
-├── skills-lock.json    # Version lockfile for Antigravity AI custom developer skills
+├── index.html           # Main HTML5 entrypoint and layout structure for the SPA
+├── skills-lock.json     # Version lockfile for Antigravity AI custom developer skills
 ├── vite.config.ts       # Vite bundler configuration and environment setup
 ├── vitest.config.ts     # Vitest test runner configuration for isolated unit testing
-└── src/                # Core application source code
-    ├── api.ts          # Direct GCP REST API handshakes, customized errors, and headers
-    ├── api.test.ts     # Mock REST client API tests (Vitest)
-    ├── auth.ts         # Google OAuth 2.0 token management and session handling
-    ├── main.ts         # SPA orchestration, OAuth flow, and path routing
+└── src/                 # Core application source code
+    ├── api.ts           # Direct GCP REST API handshakes, customized errors, and headers
+    ├── auth.ts          # Google OAuth 2.0 token management and session handling
+    ├── main.ts          # SPA orchestration, OAuth flow, and path routing
     ├── scan-linear.ts   # New: Sequential scanner module with inline quota-borrowing
-    ├── scan-linear.test.ts # New: Unit tests for sequential scanning
     ├── scan-parallel.ts # New: Concurrent parallel scanner with worker staggers & retries
-    ├── scan-parallel.test.ts # New: Unit tests for concurrent scanning & error fallbacks
-    ├── style.css       # Clean, color-blind friendly modern CSS layout rules
-    ├── types.ts        # Shared TypeScript interfaces for GCP resources and state
-    ├── utils.ts        # Helper libraries for date parsing, version formatting, and log levels
-    ├── utils.test.ts   # Unit tests for core utilities and restriction evaluators
-    ├── vite-env.d.ts   # Ambient TypeScript declarations for Vite environment variables
-    └── vite.config.test.ts # Unit tests for Vite configuration factory
+    ├── style.css        # Clean, color-blind friendly modern CSS layout rules
+    ├── types.ts         # Shared TypeScript interfaces for GCP resources and state
+    ├── utils.ts         # Helper libraries for date parsing, version formatting, and log levels
+    └── vite-env.d.ts    # Ambient TypeScript declarations for Vite environment variables
 ```
 
 ---
@@ -42,7 +36,7 @@ To provide an optimal balance between execution speed, system resilience, and ga
 
 ```mermaid
 flowchart TD
-    A[Resolve Projects List] --> B{Project count N < 64?}
+    A[Resolve Projects List] --> B{Project count N < Threshold?}
     B -- Yes --> C[Linear Sequential Path]
     B -- No --> D[Parallel Concurrent Path]
     
@@ -54,11 +48,11 @@ flowchart TD
     D2 --> D3[Backend Collision recovery]
 ```
 
-### 1. The 64-Project Transition Threshold
-The scanner evaluates the count of projects $N$ in the user's accessible list to select the optimal path:
-*   **Linear Path ($N < 64$):** Executes sequential, race-free HTTP requests. This guarantees that scans complete safely in under ~22 seconds even in the absolute worst-case scenario (where $N-1$ projects are service-disabled and require dual-pass scanning):
+### 1. Dynamic Path Transition Threshold (Default: 64)
+The scanner evaluates the count of projects $N$ against a customizable threshold $T$ (which defaults to `64` but can be adjusted via LocalStorage) to select the optimal path:
+*   **Linear Path ($N < T$):** Executes sequential, race-free HTTP requests. This guarantees that scans complete safely in under ~22 seconds even in the absolute worst-case scenario (where $N-1$ projects are service-disabled and require dual-pass scanning):
     $$T_{\text{worst\_linear}} = (N - 1) \cdot 0.35\text{s} + 0.20\text{s}$$
-*   **Parallel Path ($N \ge 64$):** Switches to high-throughput parallel execution utilizing **4 concurrent worker queues** processed in sequential batches of 12.
+*   **Parallel Path ($N \ge T$):** Switches to high-throughput parallel execution utilizing **4 concurrent worker queues** processed in sequential batches of 12.
 
 ### 2. Microscopic Worker Staggers
 In parallel mode, the engine introduces a synchronous **$30\text{ms}$ worker startup stagger**. This microscopic delay spaces out consecutive outgoing HTTP handshakes, preventing the Google Front End (GFE) gateway from triggering transient rate blocks due to simultaneous sub-millisecond OAuth validation calls.
@@ -109,27 +103,34 @@ npm test
 npm run build
 ```
 
-### 3. Developer Console Diagnostics (LocalStorage logs)
-To prevent console clutter for production users, all verbose scanner telemetry (including queue steps, backlog Sweeps, and HTTP headers) is silenced by default. To activate deep diagnostics:
-*   **Enable Debug Logs:** Open your browser's Developer Tools (Chrome/Firefox Console) and run:
+---
+
+## 🎛️ Diagnostic Configuration & Developer Controls
+
+To prevent browser console clutter for standard production users, all verbose scanner telemetry (including queue steps, backlog sweeps, and request HTTP headers) is silenced by default. Developers can dynamically control verbosity and routing paths at runtime using the browser's **Developer Console (LocalStorage)**:
+
+### 1. Enable Verbose Debug Logging
+Activate detailed diagnostic telemetry logs:
+*   **Enable Logs:** Open your browser's Developer Tools Console (F12) and run:
     ```javascript
     localStorage.setItem('api_keys_scanner_debug', 'true')
     ```
     Then refresh the page.
-*   **Disable Debug Logs:** Open Console and run:
+*   **Disable Logs:** Run the following in the console:
     ```javascript
     localStorage.removeItem('api_keys_scanner_debug')
     ```
 
-*   **Adjust Path Selection Threshold (Debugging Parallel Scans):** By default, the application runs sequential scanning if the project count is less than `64`. To test parallel scanning in real-world accounts with fewer projects:
-    *   **Force Parallel Scan:** Run the following command in the console to drop the threshold to `1`, which forces the parallel concurrent scanner on all scans:
-        ```javascript
-        localStorage.setItem('api_keys_scanner_threshold', '1')
-        ```
-    *   **Restore Default (64 projects):** Run:
-        ```javascript
-        localStorage.removeItem('api_keys_scanner_threshold')
-        ```
+### 2. Configure Path Selection Threshold (Debugging Parallel Scans)
+By default, the application runs sequential scanning if the project count is less than `64`. To test parallel execution in live environments with a small number of projects:
+*   **Force Parallel Scan:** Drop the threshold to `1` so the parallel concurrent scanner is forced on all runs:
+    ```javascript
+    localStorage.setItem('api_keys_scanner_threshold', '1')
+    ```
+*   **Restore Default (64 projects):** Run:
+    ```javascript
+    localStorage.removeItem('api_keys_scanner_threshold')
+    ```
 
 ---
 
