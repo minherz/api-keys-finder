@@ -15,6 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { executeParallelScan } from './scan-parallel';
 import { GcpProject } from './types';
+import { getScannerConfig } from './utils';
 
 vi.mock('./auth', () => ({
   getAuthToken: () => 'dummy_token'
@@ -215,5 +216,26 @@ describe('scan-parallel unit tests', () => {
       call[0] && typeof call[0] === 'string' && call[0].includes('[SCANNER_DEBUG]')
     );
     expect(hasScannerDebugCall).toBe(false);
+  });
+
+  it('should retrieve dynamic threshold and debug configurations correctly from localStorage', () => {
+
+    // Default configuration when empty
+    localStorage.removeItem('api_keys_scanner_threshold');
+    localStorage.removeItem('api_keys_scanner_debug');
+    expect(getScannerConfig()).toEqual({ debug: false, threshold: 64 });
+
+    // Custom threshold config
+    localStorage.setItem('api_keys_scanner_threshold', '12');
+    localStorage.setItem('api_keys_scanner_debug', 'true');
+    expect(getScannerConfig()).toEqual({ debug: true, threshold: 12 });
+
+    // Fallback on invalid non-numeric threshold
+    localStorage.setItem('api_keys_scanner_threshold', 'not-a-number');
+    expect(getScannerConfig().threshold).toBe(64);
+
+    // Fallback on zero/negative values
+    localStorage.setItem('api_keys_scanner_threshold', '-5');
+    expect(getScannerConfig().threshold).toBe(64);
   });
 });

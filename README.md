@@ -121,6 +121,16 @@ To prevent console clutter for production users, all verbose scanner telemetry (
     localStorage.removeItem('api_keys_scanner_debug')
     ```
 
+*   **Adjust Path Selection Threshold (Debugging Parallel Scans):** By default, the application runs sequential scanning if the project count is less than `64`. To test parallel scanning in real-world accounts with fewer projects:
+    *   **Force Parallel Scan:** Run the following command in the console to drop the threshold to `1`, which forces the parallel concurrent scanner on all scans:
+        ```javascript
+        localStorage.setItem('api_keys_scanner_threshold', '1')
+        ```
+    *   **Restore Default (64 projects):** Run:
+        ```javascript
+        localStorage.removeItem('api_keys_scanner_threshold')
+        ```
+
 ---
 
 ## 🚀 Deployment & Versioning

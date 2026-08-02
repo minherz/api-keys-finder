@@ -14,7 +14,7 @@
 
 import { AppState, GcpProject } from './types';
 import { AppError, fetchUserProfile, fetchProjects } from './api';
-import { copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions, logDebug } from './utils';
+import { copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions, logDebug, getScannerConfig } from './utils';
 import { login, logout, getAuthToken, getAuthScope } from './auth';
 import { executeLinearScan } from './scan-linear';
 import { executeParallelScan } from './scan-parallel';
@@ -532,12 +532,13 @@ async function executeSearchWorkflow() {
 
   try {
     let result: { quotaProject: string | null };
+    const config = getScannerConfig();
 
-    if (projects.length < 64) {
-      logDebug(`Project count (${projects.length}) < 64. Selecting LINEAR scan path.`);
+    if (projects.length < config.threshold) {
+      logDebug(`Project count (${projects.length}) < threshold (${config.threshold}). Selecting LINEAR scan path.`);
       result = await executeLinearScan(projects, signal, onProgress, onResult, onError);
     } else {
-      logDebug(`Project count (${projects.length}) >= 64. Selecting PARALLEL scan path.`);
+      logDebug(`Project count (${projects.length}) >= threshold (${config.threshold}). Selecting PARALLEL scan path.`);
       result = await executeParallelScan(projects, signal, onProgress, onResult, onError);
     }
 
