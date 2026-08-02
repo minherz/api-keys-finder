@@ -1,0 +1,3 @@
+[submodule "deploy/devrel-apps-hosting"]
+	path = deploy/devrel-apps-hosting
+	url = https://github.com/minherz/devrel-apps-hosting.git
