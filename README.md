@@ -36,6 +36,11 @@ An ultra-lightweight, high-performance Single Page Application (SPA) designed to
 
 To run or build the application locally, you **must explicitly define** the `VITE_GOOGLE_OAUTH_CLIENT_ID` environment variable containing a registered Google OAuth 2.0 Client ID.
 
+> [!IMPORTANT]
+> **OAuth Client ID parent project prerequisite:**
+> The Google Cloud project that **owns the OAuth 2.0 Client ID** (used in `VITE_GOOGLE_OAUTH_CLIENT_ID`) **must have the API Keys API (`apikeys.googleapis.com`) enabled**. 
+> Because Google's API gateway implicitly charges service usage quota to the project associated with the OAuth Client ID by default during REST handshakes, failing to enable the API on this project will cause all downstream scans to fail with `SERVICE_DISABLED` (even on target projects where the API is enabled).
+
 ### Environment Variables
 * `VITE_GOOGLE_OAUTH_CLIENT_ID` (**Required**): Google OAuth 2.0 Client ID for GCP authentication.
 * `VITE_APP_VERSION` (*Optional*): Custom version string (e.g. `v0.0.1+a1b2c3d`). Defaults to `v0.0.1` if omitted.
@@ -94,8 +99,8 @@ The scanner cannot bypass Cloud IAM resource policies. To see keys:
 *   **Key Inspection Permissions:** You must have permissions equivalent to the **API Keys Viewer** (`roles/serviceusage.apiKeysViewer`) role on the targeted projects. Specifically, the identity needs `serviceusage.apiKeys.list` to fetch key metadata and check restrictions.
 
 ### 3. Service Enablement Constraints
-*   The scanner relies on the API Keys API (`apikeys.googleapi.com`) to query keys.
-*   At least **one** project in your accessible list **must have the API Keys API active**. Without at least one active project, the scanner cannot establish a `goodProjectId` to act as a billing anchor. In this rare scenario, the scan will gracefully complete with errors reporting that the API is disabled.
+*   The scanner relies on the API Keys API (`apikeys.googleapis.com`) to query keys.
+*   At least **one** project in your accessible list **must have the API Keys API active**. Without at least one active project, the scanner cannot establish a `quotaProjectId` to act as a billing anchor. In this rare scenario, the scan will gracefully complete with errors reporting that the API is disabled.
 
 ### 4. Firebase Hosting Service Agent IAM Role
 When using Firebase Hosting rewrites to Cloud Run, the **Firebase Hosting Service Agent** (`service-<PROJECT_NUMBER>@gcp-sa-firebasehosting.iam.gserviceaccount.com`) must be granted the **Cloud Run Invoker** (`roles/run.invoker`) role on the Cloud Run service. This enables Firebase Hosting's proxy to invoke the underlying Cloud Run revision.
