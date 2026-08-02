@@ -577,11 +577,7 @@ async function executeSearchWorkflow() {
             }
 
             try {
-              updateStatusBar(`Scanning project ${projectId} borrowing quota from ${currentQuota}...`);
               const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
-
-              // Update the shared quota project ID with latest success
-              quotaProjectId = projectId;
 
               const parsedKeys = keys.map(k => parseApiKey(k, projectId));
               state.keys = state.keys.concat(parsedKeys);
@@ -620,11 +616,11 @@ async function executeSearchWorkflow() {
           if (signal.aborted) {
             throw new DOMException('Aborted', 'AbortError');
           }
-
           try {
             const keys = await fetchProjectApiKeys(projectId, signal, currentQuota);
 
-            quotaProjectId = projectId;
+            // NOTE: We do NOT update quotaProjectId here, because this project
+            // has the service disabled and only succeeded via quota borrowing.
 
             const parsedKeys = keys.map(k => parseApiKey(k, projectId));
             state.keys = state.keys.concat(parsedKeys);
