@@ -25,6 +25,8 @@ jobs:
         with:
           fetch-depth: 0    # fetch all history
           filter: blob:none # exclude file contents for faster checkout
+          submodules: 'recursive'
+          token: ${{ secrets.READ_ONLY_PAT }}
 
       - name: Calculate Semantic Version
         id: semver
@@ -90,3 +92,12 @@ jobs:
           flags: "--allow-unauthenticated --cpu-boost --service-account=${{ secrets.CLOUD_RUN_APP_SERVICE_NAME }}"
           revision_traffic: 'LATEST=100'
           skip_default_labels: true
+
+      - name: Deploy to Firebase Hosting (Live Channel)
+        uses: minherz/firebase-hosting-deploy@v2
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: "${{ steps.auth.outputs.credentials_file_path }}"
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          entryPoint: ./deploy/devrel-apps-hosting
+          channelId: live
