@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/minherz/api-keys-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/minherz/api-keys-finder/actions/workflows/ci.yml)
 
-An ultra-lightweight, high-performance Single Page Application (SPA) designed to audit and inspect active API keys across all accessible Google Cloud projects. Running entirely inside the browser with **zero backend dependencies**, it communicates directly with Google Cloud REST APIs to perform real-time security scanning, categorization, and restriction checks.
+An ultra-lightweight, high-performance Single Page Application (SPA) designed to audit and inspect active API keys across all accessible Google Cloud projects. Running entirely inside the browser with **zero backend dependencies**, it communicates directly with Google Cloud REST APIs to perform real-time key inspection, categorization, and restriction audits.
+
+For full details on data privacy, storage lifecycles, and permissions, please see the [Security & Privacy](#-security--privacy) section.
 
 ---
 
@@ -20,13 +22,44 @@ An ultra-lightweight, high-performance Single Page Application (SPA) designed to
     ├── api.ts           # Direct GCP REST API handshakes, customized errors, and headers
     ├── auth.ts          # Google OAuth 2.0 token management and session handling
     ├── main.ts          # SPA orchestration, OAuth flow, and path routing
-    ├── scan-linear.ts   # New: Sequential scanner module with inline quota-borrowing
-    ├── scan-parallel.ts # New: Concurrent parallel scanner with worker staggers & retries
+    ├── scan-linear.ts   # Sequential scanner module with cross-project service routing
+    ├── scan-parallel.ts # Concurrent parallel scanner with worker staggers & retries
     ├── style.css        # Clean, color-blind friendly modern CSS layout rules
     ├── types.ts         # Shared TypeScript interfaces for GCP resources and state
     ├── utils.ts         # Helper libraries for date parsing, version formatting, and log levels
     └── vite-env.d.ts    # Ambient TypeScript declarations for Vite environment variables
 ```
+
+---
+
+## 🔒 Security & Privacy
+
+### 1. Client-Side Execution & Data Privacy
+* **Zero Backend Storage or Transmission:** The application runs **100% client-side** inside your browser. No user information, profile data, project IDs, or API keys are ever transmitted to or stored on external servers, third-party databases, or analytics services. All network requests are made directly between your browser and official Google Cloud REST APIs.
+* **Ephemeral Session Storage:** All authentication tokens and active session states are stored strictly in memory and browser `sessionStorage`. **No user data is stored beyond the point the window or tab is closed.**
+* **Explicit Session Revocation:** Clicking **Sign Out** immediately wipes the local session and cached tokens from memory and `sessionStorage`, while issuing an explicit token revocation request to Google's OAuth 2.0 authorization server.
+
+### 2. OAuth 2.0 Scopes
+The application adheres strictly to the **Principle of Least Privilege**. When signing in, the application requests only the following non-destructive scopes:
+
+| OAuth Scope | Type | Purpose / Justification |
+| :--- | :--- | :--- |
+| `openid` | Identity | Authenticates user identity via OpenID Connect. |
+| `.../auth/userinfo.profile` | Identity | Retrieves user display name and avatar for the header profile menu. |
+| `.../auth/userinfo.email` | Identity | Retrieves user email address for display in account details. |
+| `https://www.googleapis.com/auth/cloud-platform.read-only` | GCP | Provides strictly **read-only** access to list accessible projects (`Cloud Resource Manager API`) and inspect API key metadata and restrictions (`API Keys API`). |
+
+> [!NOTE]
+> The application does **not** request broad write or administrative permissions (`cloud-platform`). It cannot create, edit, modify, or delete any GCP resources or API keys.
+
+### 3. IAM Permissions & Role Requirements
+The application operates entirely within Cloud IAM constraints and cannot bypass resource access policies:
+* **Project Visibility:** The scanner only discovers GCP projects that your identity has permissions to list via the Cloud Resource Manager API.
+* **Key Inspection Permissions:** The authenticated identity requires permissions equivalent to the **API Keys Viewer** (`roles/serviceusage.apiKeysViewer`) role (specifically `serviceusage.apiKeys.list` and `serviceusage.apiKeys.get`) on the targeted projects.
+* **Firebase Hosting Service Agent IAM:** When utilizing Firebase Hosting rewrites to Cloud Run, the **Firebase Hosting Service Agent** (`service-<PROJECT_NUMBER>@gcp-sa-firebasehosting.iam.gserviceaccount.com`) must be granted the **Cloud Run Invoker** (`roles/run.invoker`) role on the Cloud Run service.
+
+### 4. Zero Cost & Non-Billable APIs
+All Google Cloud APIs invoked by this application ([Cloud Resource Manager API](https://cloud.google.com/resource-manager/docs) and [API Keys API](https://cloud.google.com/api-keys/docs)) are free of charge. Running scans across your projects incurs **zero Google Cloud billing costs**.
 
 ---
 
@@ -41,7 +74,7 @@ flowchart TD
     B -- No --> D[Parallel Concurrent Path]
     
     C --> C1[Sequential requests]
-    C1 --> C2[Inline Quota Borrowing]
+    C1 --> C2[Cross-Project Service Routing]
     
     D --> D1[4 concurrent workers with 30ms staggers]
     D1 --> D2[Transient backoff retry loop]
@@ -57,10 +90,10 @@ The scanner evaluates the count of projects $N$ against a customizable threshold
 ### 2. Microscopic Worker Staggers
 In parallel mode, the engine introduces a synchronous **$30\text{ms}$ worker startup stagger**. This microscopic delay spaces out consecutive outgoing HTTP handshakes, preventing the Google Front End (GFE) gateway from triggering transient rate blocks due to simultaneous sub-millisecond OAuth validation calls.
 
-### 3. Dynamic Quota-Borrowing & Billing Anchors (`quotaProjectId`)
-Because Google Cloud REST APIs implicitly charge quota/billing to the project owning the API Key resource, calling `apikeys.googleapis.com` on a project with the service disabled results in a permanent `SERVICE_DISABLED` error block.
-*   **The Solution:** The scanner identifies the first accessible project where the API is enabled, marking it as the **Quota Project Anchor** (`quotaProjectId`).
-*   **Borrowing:** For all subsequent service-disabled projects, the scanner borrows Service Usage quota by appending the active project's ID in the `x-goog-user-project` HTTP header, safely bypassing disabled blocks on other projects.
+### 3. Cross-Project Service Routing (`x-goog-user-project`)
+When calling the API Keys API on a project where the service has not been explicitly activated, Google Cloud REST APIs return a `SERVICE_DISABLED` error.
+*   **The Solution:** The scanner identifies the first accessible project in the signed-in user's project list where the API is active, designating it as the **Quota Project** (`quotaProjectId`).
+*   **Routing:** For all subsequent projects where the API is not active, the scanner appends the quota project's ID in the `x-goog-user-project` HTTP header. This routes the service enablement check through the user's active project, safely bypassing disabled blocks without requiring manual API enablement on every project.
 
 ### 4. GFE Backend Collision Recovery (`[BACKEND_COLLISION]`)
 High-concurrency browser clients firing parallel requests with the same OAuth token can cause sub-millisecond replication lags or locking contentions within Google's IAM gateway. This causes the gateway to throw empty `403 Forbidden` responses.
@@ -73,13 +106,8 @@ High-concurrency browser clients firing parallel requests with the same OAuth to
 
 To run or build the application locally, you **must explicitly define** the `VITE_GOOGLE_OAUTH_CLIENT_ID` environment variable containing a registered Google OAuth 2.0 Client ID.
 
-> [!IMPORTANT]
-> **OAuth Client ID parent project prerequisite:**
-> The Google Cloud project that **owns the OAuth 2.0 Client ID** (used in `VITE_GOOGLE_OAUTH_CLIENT_ID`) **must have the API Keys API (`apikeys.googleapis.com`) enabled**. 
-> Because Google's API gateway implicitly charges service usage quota to the project associated with the OAuth Client ID by default during REST handshakes, failing to enable the API on this project will cause all downstream scans to fail with `SERVICE_DISABLED` (even on target projects where the API is enabled).
-
 ### Environment Variables
-* `VITE_GOOGLE_OAUTH_CLIENT_ID` (**Required**): Google OAuth 2.0 Client ID for GCP authentication.
+* `VITE_GOOGLE_OAUTH_CLIENT_ID` (**Required**): Google OAuth 2.0 Web Client ID with authorized JavaScript origins matching your hosting or local development URL (e.g. `http://localhost:5173`).
 * `VITE_APP_VERSION` (*Optional*): Custom version string (e.g. `v0.0.1+a1b2c3d`). Defaults to `v0.0.1` if omitted.
 
 ### 1. Using a `.env` File (Recommended)
@@ -159,14 +187,14 @@ The application utilizes standard Google OAuth 2.0 User-Agent flow. You can sign
 *   A standard, public **Gmail account** (`@gmail.com`).
 *   An account from an **external Identity Provider (IdP)** (e.g., Okta, Ping, Azure AD) that is federated with Google Cloud via SAML or OIDC.
 
-### 2. IAM Permissions & Role Requirements
-The scanner cannot bypass Cloud IAM resource policies. To see keys:
-*   **Project Visibility:** You will only discover keys in GCP projects that your authenticated identity has permissions to list via the Cloud Resource Manager API.
-*   **Key Inspection Permissions:** You must have permissions equivalent to the **API Keys Viewer** (`roles/serviceusage.apiKeysViewer`) role on the targeted projects. Specifically, the identity needs `serviceusage.apiKeys.list` to fetch key metadata and check restrictions.
+For details on authentication data handling and OAuth scopes, see [Security & Privacy](#-security--privacy).
+
+### 2. IAM Permissions & Access Control
+Access control and resource discovery are governed by Google Cloud IAM. Please see [Security & Privacy → IAM Permissions & Role Requirements](#3-iam-permissions--role-requirements) for complete details on required viewer roles and project visibility permissions.
 
 ### 3. Service Enablement Constraints
 *   The scanner relies on the API Keys API (`apikeys.googleapis.com`) to query keys.
-*   At least **one** project in your accessible list **must have the API Keys API active**. Without at least one active project, the scanner cannot establish a `quotaProjectId` to act as a billing anchor. In this rare scenario, the scan will gracefully complete with errors reporting that the API is disabled.
+*   At least **one** project in the signed-in user's accessible list **must have the API Keys API active**. Without at least one active project, the scanner cannot establish a quota project for `x-goog-user-project` routing. In this scenario, the scan will gracefully complete with notifications reporting that the API is disabled on un-activated projects.
 
-### 4. Firebase Hosting Service Agent IAM Role
-When using Firebase Hosting rewrites to Cloud Run, the **Firebase Hosting Service Agent** (`service-<PROJECT_NUMBER>@gcp-sa-firebasehosting.iam.gserviceaccount.com`) must be granted the **Cloud Run Invoker** (`roles/run.invoker`) role on the Cloud Run service. This enables Firebase Hosting's proxy to invoke the underlying Cloud Run revision.
+### 4. Hosting & Deployment IAM
+When deploying with Firebase Hosting rewrites to Cloud Run, refer to [Security & Privacy → IAM Permissions & Role Requirements](#3-iam-permissions--role-requirements) for the required Service Agent Invoker configuration.
