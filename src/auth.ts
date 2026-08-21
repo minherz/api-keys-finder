@@ -23,12 +23,20 @@ if (!GOOGLE_OAUTH_CLIENT_ID) {
 
 interface AuthSession {
   token: string | null;
-  scope: 'readonly' | 'full' | null;
 }
 
 // Global In-Memory state for the active session
 let activeSession: AuthSession | null = null;
 
+// Required Google OAuth 2.0 scopes (Read-Only Cloud Platform auditing)
+const OAUTH_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/cloud-platform.read-only'
+].join(' ');
+
+const REQUIRED_CLOUD_SCOPE = 'https://www.googleapis.com/auth/cloud-platform.read-only';
 
 /**
  * Initializes the auth session by restoring any saved credentials from sessionStorage.
@@ -36,12 +44,11 @@ let activeSession: AuthSession | null = null;
  */
 function initializeSession(): AuthSession {
   const token = sessionStorage.getItem('gcp_reviewer_token');
-  const scope = sessionStorage.getItem('gcp_reviewer_scope') as 'readonly' | 'full' | null;
 
-  if (token && scope) {
-    activeSession = { token, scope };
+  if (token) {
+    activeSession = { token };
   } else {
-    activeSession = { token: null, scope: null };
+    activeSession = { token: null };
   }
 
   return activeSession;
@@ -56,18 +63,9 @@ export function getAuthToken(): string | null {
 }
 
 /**
- * Retrieves the active scope level.
- */
-export function getAuthScope(): 'readonly' | 'full' | null {
-  let s: AuthSession = (activeSession ??= initializeSession());
-  return s.scope;
-}
-
-/**
- * Triggers the modern Google Identity Services popup login flow.
+ * Triggers the modern Google Identity Services popup login flow with read-only Cloud Platform scopes.
  */
 export function login(
-  scopeType: 'readonly' | 'full',
   onSuccess: () => void,
   onError: (errorMessage: string) => void
 ): void {
@@ -79,23 +77,10 @@ export function login(
     return;
   }
 
-  // Construct target scopes
-  const scopesList = [
-    'openid',
-    'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/userinfo.email'
-  ];
-
-  if (scopeType === 'readonly') {
-    scopesList.push('https://www.googleapis.com/auth/cloud-platform.read-only');
-  } else if (scopeType === 'full') {
-    scopesList.push('https://www.googleapis.com/auth/cloud-platform');
-  }
-
   try {
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_OAUTH_CLIENT_ID,
-      scope: scopesList.join(' '),
+      scope: OAUTH_SCOPES,
       prompt: 'select_account',
       callback: (tokenResponse: any) => {
         if (tokenResponse.error) {
@@ -104,23 +89,17 @@ export function login(
           return;
         }
 
-        // Validate that requested scopes were actually granted by the user
-        const requiredScope = scopeType === 'readonly'
-          ? 'https://www.googleapis.com/auth/cloud-platform.read-only'
-          : 'https://www.googleapis.com/auth/cloud-platform';
-
-        if (!google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, requiredScope)) {
+        // Validate that requested read-only scope was actually granted by the user
+        if (!google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, REQUIRED_CLOUD_SCOPE)) {
           onError('Access Denied: You must grant the application permissions to access Google Cloud Platform resources to perform key reviews.');
           return;
         }
 
         // Store session in memory and sessionStorage
         activeSession = {
-          token: tokenResponse.access_token,
-          scope: scopeType
+          token: tokenResponse.access_token
         };
         sessionStorage.setItem('gcp_reviewer_token', tokenResponse.access_token);
-        sessionStorage.setItem('gcp_reviewer_scope', scopeType);
 
         onSuccess();
       },
@@ -145,7 +124,7 @@ export async function logout(): Promise<void> {
   const currentToken = getAuthToken();
 
   // Wipe active session from memory and storage first
-  activeSession = { token: null, scope: null };
+  activeSession = { token: null };
   sessionStorage.removeItem('gcp_reviewer_token');
   sessionStorage.removeItem('gcp_reviewer_scope');
   sessionStorage.removeItem('gcp_reviewer_oauth_state');
