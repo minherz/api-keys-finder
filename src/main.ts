@@ -15,7 +15,7 @@
 import { AppState, GcpProject } from './types';
 import { AppError, fetchUserProfile, fetchProjects } from './api';
 import { copyToClipboard, formatDate, formatCopyrightVersion, getRecommendationText, hasApiRestrictions, hasAppRestrictions, logDebug, getScannerConfig } from './utils';
-import { login, logout, getAuthToken, getAuthScope } from './auth';
+import { login, logout, getAuthToken } from './auth';
 import { executeLinearScan } from './scan-linear';
 import { executeParallelScan } from './scan-parallel';
 
@@ -137,7 +137,7 @@ function renderEmptyState() {
 
     const btnEmptySignInDynamic = document.getElementById('btn-empty-sign-in') as HTMLButtonElement;
     if (btnEmptySignInDynamic) {
-      btnEmptySignInDynamic.addEventListener('click', () => redirectToGoogleOAuth('readonly'));
+      btnEmptySignInDynamic.addEventListener('click', () => redirectToGoogleOAuth());
     }
   }
 }
@@ -145,10 +145,9 @@ function renderEmptyState() {
 /**
  * Triggers Google OAuth sign-in popup using the modern Google Identity Services library.
  */
-function redirectToGoogleOAuth(scopeType: 'readonly' | 'full') {
+function redirectToGoogleOAuth() {
   updateStatusBar('Opening Google Sign-In popup...');
   login(
-    scopeType,
     () => {
       handleOAuthSession();
     },
@@ -163,9 +162,8 @@ function redirectToGoogleOAuth(scopeType: 'readonly' | 'full') {
  */
 async function handleOAuthSession() {
   const token = getAuthToken();
-  const scope = getAuthScope();
 
-  if (token && scope) {
+  if (token) {
     // Update toolbar profile elements to loading state
     btnShowSignIn.classList.add('hidden');
     userProfileContainer.classList.remove('hidden');
@@ -176,9 +174,8 @@ async function handleOAuthSession() {
     btnSearchKeys.disabled = false;
 
     // Set status bar permission pill
-    permissionLevelPill.textContent = scope === 'readonly' ? 'Read-Only' : 'Full Access';
-    permissionLevelPill.className = 'permission-pill';
-    permissionLevelPill.classList.add(scope === 'readonly' ? 'level-readonly' : 'level-full');
+    permissionLevelPill.textContent = 'Read-Only';
+    permissionLevelPill.className = 'permission-pill level-readonly';
 
     renderEmptyState();
 
@@ -480,7 +477,7 @@ async function executeSearchWorkflow() {
 
     let friendlyMessage = 'Failed to retrieve projects. ';
     if (err instanceof AppError && (err.status === 401 || err.status === 403)) {
-      friendlyMessage += 'Please verify that your Google account has active access to Google Cloud and has granted "Cloud Platform" or "Cloud Platform (Read-Only)" scopes.';
+      friendlyMessage += 'Please verify that your Google account has active access to Google Cloud and has granted "Cloud Platform (Read-Only)" scope.';
     } else {
       friendlyMessage += err.message || 'Unknown network error.';
     }
@@ -585,7 +582,7 @@ async function executeSearchWorkflow() {
  * Attaches event listeners to DOM controls.
  */
 function setupEventListeners() {
-  btnShowSignIn.addEventListener('click', () => redirectToGoogleOAuth('readonly'));
+  btnShowSignIn.addEventListener('click', () => redirectToGoogleOAuth());
 
   btnCloseErrorsModal.addEventListener('click', () => setErrorsModalVisible(false));
   btnConfirmErrorsModal.addEventListener('click', () => setErrorsModalVisible(false));

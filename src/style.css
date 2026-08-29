@@ -207,7 +207,8 @@ h4 {
   gap: 12px;
   border-left: 1px solid var(--border-light);
   padding-left: 16px;
-  position: relative; /* Set to relative so dropdown aligns absolute under it */
+  position: relative;
+  /* Set to relative so dropdown aligns absolute under it */
 }
 
 /* Profile Trigger Button */
@@ -263,6 +264,7 @@ h4 {
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -830,56 +832,6 @@ h4 {
   font-size: 11px;
 }
 
-/* Scope radio selections */
-.scope-options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.scope-radio-card {
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 16px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.scope-radio-card:hover {
-  background-color: var(--bg-hover);
-}
-
-.scope-radio-card input[type="radio"] {
-  margin-top: 4px;
-  accent-color: var(--border-heavy);
-}
-
-/* If checked, apply heavy border and solid backgrounds (no color highlight) */
-.scope-radio-card:has(input[type="radio"]:checked) {
-  border-color: var(--border-heavy);
-  background-color: var(--bg-hover);
-}
-
-.radio-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.radio-title {
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.radio-desc {
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
 
 .modal-footer {
   display: flex;
